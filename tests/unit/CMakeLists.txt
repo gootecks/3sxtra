@@ -2,22 +2,22 @@
 # Helper functions to reduce platform-specific linking duplication
 # =============================================================================
 
+if(WIN32)
+    set(TEST_SDL3_LIB ${SDL3_ROOT}/lib/libSDL3.dll.a)
+elseif(APPLE)
+    set(TEST_SDL3_LIB ${SDL3_ROOT}/lib/libSDL3.0.dylib)
+else()
+    set(TEST_SDL3_LIB ${SDL3_ROOT}/lib/libSDL3.so)
+endif()
+
 # Link SDL3 only (for tests that don't need GekkoNet)
 function(target_link_sdl3 TARGET_NAME)
-    if(WIN32)
-        target_link_libraries(${TARGET_NAME} PRIVATE ${SDL3_ROOT}/lib/libSDL3.dll.a)
-    else()
-        target_link_libraries(${TARGET_NAME} PRIVATE ${SDL3_ROOT}/lib/libSDL3.so)
-    endif()
+    target_link_libraries(${TARGET_NAME} PRIVATE ${TEST_SDL3_LIB})
 endfunction()
 
 # Link SDL3 + glad_gl_core (for bezel/OpenGL tests)
 function(target_link_sdl3_glad TARGET_NAME)
-    if(WIN32)
-        target_link_libraries(${TARGET_NAME} PRIVATE ${SDL3_ROOT}/lib/libSDL3.dll.a glad_gl_core)
-    else()
-        target_link_libraries(${TARGET_NAME} PRIVATE ${SDL3_ROOT}/lib/libSDL3.so glad_gl_core)
-    endif()
+    target_link_libraries(${TARGET_NAME} PRIVATE ${TEST_SDL3_LIB} glad_gl_core)
 endfunction()
 
 # Link GekkoNet + SDL3 + Win32 system libs (for netplay tests)
@@ -35,8 +35,10 @@ function(target_link_gekkonet_sdl3 TARGET_NAME)
             ${SDL3_NET_DIR}/lib/libSDL3_net.dll.a
             ws2_32 userenv ntdll advapi32 bcrypt dbghelp
         )
+    elseif(APPLE)
+        target_link_libraries(${TARGET_NAME} PRIVATE GekkoNet ${TEST_SDL3_LIB} ${SDL3_NET_DIR}/lib/libSDL3_net.0.dylib)
     else()
-        target_link_libraries(${TARGET_NAME} PRIVATE GekkoNet ${SDL3_ROOT}/lib/libSDL3.so ${SDL3_NET_DIR}/lib/libSDL3_net.so)
+        target_link_libraries(${TARGET_NAME} PRIVATE GekkoNet ${TEST_SDL3_LIB} ${SDL3_NET_DIR}/lib/libSDL3_net.so)
     endif()
 endfunction()
 endif() # ENABLE_NETPLAY
@@ -292,6 +294,41 @@ add_unit_test(test_bezel_layout
 target_include_directories(test_bezel_layout PRIVATE ${PROJECT_SOURCE_DIR}/include ${SDL3_ROOT}/include)
 target_link_sdl3_glad(test_bezel_layout)
 endif() # ENABLE_BEZEL
+
+# -----------------------------------------------------------------------------
+# Librashader on the engine's OpenGL context (skips without a GL context)
+# -----------------------------------------------------------------------------
+
+if(ENABLE_LIBRASHADER AND NOT PLATFORM_RPI4)
+add_unit_test(test_librashader_gl
+    test_librashader_gl.c
+    ${PROJECT_SOURCE_DIR}/src/shaders/librashader_manager_gl.c
+    ${PROJECT_SOURCE_DIR}/src/port/sdl/app/sdl_app_gl_context.c
+)
+target_include_directories(test_librashader_gl PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+    ${SDL3_ROOT}/include
+    ${THIRD_PARTY_DIR}/librashader/include
+)
+target_compile_definitions(test_librashader_gl PRIVATE
+    BUNDLED_PRESET_DIR="${PROJECT_SOURCE_DIR}/assets/shaders/custom"
+    CUSTOM_PRESET_DIR="${THIRD_PARTY_DIR}/slang-shaders/custom"
+    FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/librashader"
+)
+target_link_sdl3_glad(test_librashader_gl)
+target_link_libraries(test_librashader_gl PRIVATE ${LIBRASHADER_LIB} stdc++)
+if(APPLE)
+    target_link_libraries(test_librashader_gl PRIVATE "-framework OpenGL")
+elseif(UNIX)
+    target_link_libraries(test_librashader_gl PRIVATE dl pthread m)
+endif()
+# Bundled presets reference siblings in slang-shaders via ../, as at runtime.
+add_custom_command(TARGET test_librashader_gl POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${PROJECT_SOURCE_DIR}/assets/shaders/custom" "${THIRD_PARTY_DIR}/slang-shaders/custom"
+    COMMENT "Copying custom shader presets for test_librashader_gl"
+)
+endif()
 
 # -----------------------------------------------------------------------------
 # Other tests (no platform-specific linking needed)

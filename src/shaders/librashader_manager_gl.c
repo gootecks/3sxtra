@@ -169,7 +169,7 @@ LibrashaderManagerGL* LibrashaderManager_Init_GL(const char* preset_path) {
 #elif defined(PLATFORM_RPI4)
     opt.glsl_version = 330;
 #else
-    opt.glsl_version = 460;
+    opt.glsl_version = 0; // Match the current context (4.1 core on macOS, 4.6 core elsewhere)
 #endif
     opt.use_dsa = false; // Compatibility
     opt.force_no_mipmaps = false;

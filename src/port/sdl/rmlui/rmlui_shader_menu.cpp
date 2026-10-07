@@ -22,6 +22,7 @@
 
 extern "C" {
 #include "port/sdl/app/sdl_app_shader_config.h"
+#include "shaders/glslp_parser.h"
 
 int SDLApp_GetScaleMode();
 void SDLApp_SetScaleMode(int mode);
@@ -65,10 +66,11 @@ static std::vector<FilteredPreset> s_filtered_presets;
 static Rml::String s_search_filter;
 static bool s_filter_dirty = true;
 
-static constexpr int CHAIN_PASSES_MAX = 32;
+static constexpr int CHAIN_PASSES_MAX = MAX_SHADERS;
 static std::vector<ChainPass> s_chain_passes;
 static int s_chain_pass_count = 0;
 static bool s_chain_dirty = false; // Set by event callbacks, consumed by per-frame update
+static Rml::String s_chain_error;
 
 static constexpr int SHADER_PARAMS_MAX = 64;
 static std::vector<ShaderParam> s_shader_params;
@@ -248,6 +250,7 @@ static void do_init() {
 
     constructor.BindFunc("chain_pass_count", [](Rml::Variant& v) { v = SDLAppShader_ChainGetPassCount(); });
     constructor.BindFunc("shader_param_count", [](Rml::Variant& v) { v = SDLAppShader_GetParamCount(); });
+    constructor.BindFunc("chain_error", [](Rml::Variant& v) { v = s_chain_error; });
 
     // ── Scalar BindFunc bindings ──
 
@@ -509,6 +512,13 @@ extern "C" void rmlui_shader_menu_update() {
         dirty = true;
     }
 
+    const char* chain_error = SDLAppShader_ChainGetLastError();
+    if (s_chain_error != chain_error) {
+        s_chain_error = chain_error;
+        s_model_handle.DirtyVariable("chain_error");
+        dirty = true;
+    }
+
     (void)dirty;
 }
 
@@ -520,4 +530,5 @@ extern "C" void rmlui_shader_menu_shutdown() {
     s_chain_passes.clear();
     s_shader_params.clear();
     s_search_filter.clear();
+    s_chain_error.clear();
 }

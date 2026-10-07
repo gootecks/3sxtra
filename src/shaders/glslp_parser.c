@@ -101,23 +101,56 @@ static int find_parameter_index(GLSLP_Preset* preset, const char* name) {
     return -1;
 }
 
-GLSLP_Preset* GLSLP_Load(const char* path) {
+#define GLSLP_MAX_REFERENCE_DEPTH 16
+
+static int find_texture_by_name(const GLSLP_Preset* preset, const char* name);
+
+/* Returns the quoted or bare path after "#reference", or NULL if the line is not a reference. */
+static char* parse_reference_directive(char* trimmed) {
+    static const char directive[] = "#reference";
+    if (strncmp(trimmed, directive, sizeof(directive) - 1) != 0)
+        return NULL;
+    char* value = trim_whitespace(trimmed + sizeof(directive) - 1);
+    if (value[0] == '"') {
+        value++;
+        char* end_quote = strchr(value, '"');
+        if (end_quote)
+            *end_quote = '\0';
+    }
+    return value[0] != '\0' ? value : NULL;
+}
+
+static bool load_into(GLSLP_Preset* preset, const char* path, int depth) {
+    if (depth > GLSLP_MAX_REFERENCE_DEPTH) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GLSLP_Load: #reference nesting too deep at '%s'", path);
+        return false;
+    }
+
     FILE* f = fopen(path, "r");
     if (!f) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GLSLP_Load: Failed to open file '%s': %s", path, strerror(errno));
-        return NULL;
-    }
-
-    GLSLP_Preset* preset = (GLSLP_Preset*)calloc(1, sizeof(GLSLP_Preset));
-    if (!preset) {
-        fclose(f);
-        return NULL;
+        return false;
     }
 
     char base_dir[MAX_PATH];
     get_parent_dir(path, base_dir);
 
     char line[2048]; // Increased buffer size for long texture lists
+
+    /* Referenced presets load first so this file's keys override them, wherever the directive appears. */
+    while (fgets(line, sizeof(line), f)) {
+        char* ref = parse_reference_directive(trim_whitespace(line));
+        if (!ref)
+            continue;
+        char ref_path[MAX_PATH];
+        resolve_path(ref_path, base_dir, ref);
+        if (!load_into(preset, ref_path, depth + 1)) {
+            fclose(f);
+            return false;
+        }
+    }
+    rewind(f);
+
     while (fgets(line, sizeof(line), f)) {
         char* trimmed = trim_whitespace(line);
         if (trimmed[0] == '#' || trimmed[0] == '\0')
@@ -140,24 +173,41 @@ GLSLP_Preset* GLSLP_Load(const char* path) {
 
         if (strcmp(key, "shaders") == 0) {
             preset->pass_count = atoi(value);
-            if (preset->pass_count > MAX_SHADERS)
-                preset->pass_count = MAX_SHADERS;
+            if (preset->pass_count > MAX_SHADERS) {
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                             "GLSLP_Load: '%s' has %d passes, more than MAX_SHADERS (%d)",
+                             path,
+                             preset->pass_count,
+                             MAX_SHADERS);
+                fclose(f);
+                return false;
+            }
             continue;
         }
+
+        /* librashader reads overrides by name; the declared list is not needed when writing them back. */
+        if (strcmp(key, "parameters") == 0)
+            continue;
 
         if (strcmp(key, "textures") == 0) {
             char* ctx = NULL;
             char* token = strtok_r(value, ";", &ctx);
             while (token) {
                 char* tex_name = trim_whitespace(token);
-                if (preset->texture_count < MAX_TEXTURES) {
-                    strncpy(preset->textures[preset->texture_count].name, tex_name, 63);
-                    preset->textures[preset->texture_count].linear =
-                        true; // Default to linear usually? or nearest? Libretro defaults: linear=true, mipmap=false,
-                              // wrap=clamp_to_edge
-                    preset->textures[preset->texture_count].mipmap = false;
-                    strncpy(preset->textures[preset->texture_count].wrap_mode, "clamp_to_edge", 31);
-                    preset->texture_count++;
+                if (tex_name[0] != '\0' && find_texture_by_name(preset, tex_name) == -1) {
+                    if (preset->texture_count >= MAX_TEXTURES) {
+                        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                                     "GLSLP_Load: '%s' declares more than MAX_TEXTURES (%d)",
+                                     path,
+                                     MAX_TEXTURES);
+                        fclose(f);
+                        return false;
+                    }
+                    GLSLP_Texture* tex = &preset->textures[preset->texture_count++];
+                    strncpy(tex->name, tex_name, sizeof(tex->name) - 1);
+                    tex->linear = true;
+                    tex->mipmap = false;
+                    strncpy(tex->wrap_mode, "clamp_to_edge", sizeof(tex->wrap_mode) - 1);
                 }
                 token = strtok_r(NULL, ";", &ctx);
             }
@@ -269,18 +319,41 @@ GLSLP_Preset* GLSLP_Load(const char* path) {
             continue;
 
         // If not pass prop and not texture prop, it's a parameter
-        if (preset->parameter_count < MAX_PARAMETERS) {
-            // Check if parameter already exists (update it), else add new
-            int idx = find_parameter_index(preset, key);
-            if (idx == -1) {
-                idx = preset->parameter_count++;
-                strncpy(preset->parameters[idx].name, key, 63);
+        int idx = find_parameter_index(preset, key);
+        if (idx == -1) {
+            if (preset->parameter_count >= MAX_PARAMETERS) {
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                             "GLSLP_Load: '%s' sets more than MAX_PARAMETERS (%d)",
+                             path,
+                             MAX_PARAMETERS);
+                fclose(f);
+                return false;
             }
-            preset->parameters[idx].value = atof(value);
+            idx = preset->parameter_count++;
+            strncpy(preset->parameters[idx].name, key, sizeof(preset->parameters[idx].name) - 1);
         }
+        preset->parameters[idx].value = atof(value);
     }
 
     fclose(f);
+    return true;
+}
+
+GLSLP_Preset* GLSLP_Load(const char* path) {
+    GLSLP_Preset* preset = (GLSLP_Preset*)calloc(1, sizeof(GLSLP_Preset));
+    if (!preset)
+        return NULL;
+
+    if (!load_into(preset, path, 0)) {
+        free(preset);
+        return NULL;
+    }
+
+    if (preset->pass_count == 0) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "GLSLP_Load: '%s' defines no shader passes", path);
+        free(preset);
+        return NULL;
+    }
 
     // Tag all passes with their source preset path
     for (int i = 0; i < preset->pass_count; i++) {

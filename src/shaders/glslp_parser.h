@@ -3,9 +3,9 @@
 
 #include <stdbool.h>
 
-#define MAX_SHADERS 32
-#define MAX_TEXTURES 32
-#define MAX_PARAMETERS 128
+#define MAX_SHADERS 64
+#define MAX_TEXTURES 64
+#define MAX_PARAMETERS 512
 #define MAX_PATH 1024
 
 typedef enum { GLSLP_SCALE_SOURCE, GLSLP_SCALE_VIEWPORT, GLSLP_SCALE_ABSOLUTE } GLSLP_ScaleType;
@@ -50,7 +50,8 @@ typedef struct {
     GLSLP_Parameter parameters[MAX_PARAMETERS];
 } GLSLP_Preset;
 
-// Loads a preset from disk. Returns NULL on failure.
+// Loads a preset from disk, resolving "#reference" includes (referencing file's keys win).
+// Returns NULL on failure, including presets that define no passes or exceed the MAX_* limits.
 // The caller is responsible for freeing the returned pointer with GLSLP_Free.
 GLSLP_Preset* GLSLP_Load(const char* path);
 

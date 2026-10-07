@@ -58,7 +58,18 @@ static bool copy_file(const char* rom_path, const char* src_name, const char* ds
     return success;
 }
 
-/** @brief SDL folder-dialog callback — copies required game files when a folder is selected. */
+/* Locations of SF33RD.AFS inside a user-selected folder, in probe order:
+ * a mounted/extracted PS2 disc keeps it under THIRD/, while users who copied
+ * the file by hand usually select the folder that holds it directly. Lower-case
+ * variants cover case-sensitive volumes. */
+static const char* const kAfsCandidates[] = {
+    "THIRD/SF33RD.AFS",
+    "SF33RD.AFS",
+    "third/sf33rd.afs",
+    "sf33rd.afs",
+};
+
+/** @brief SDL folder-dialog callback — copies SF33RD.AFS from the selected folder. */
 static void open_folder_dialog_callback(void* userdata, const char* const* filelist, int filter) {
     /* filelist is NULL when the dialog is cancelled, closed, or unavailable
        (e.g. headless Linux / Batocera where no dialog backend exists). */
@@ -69,8 +80,20 @@ static void open_folder_dialog_callback(void* userdata, const char* const* filel
     }
 
     const char* rom_path = filelist[0];
-    bool success = true;
-    success &= copy_file(rom_path, "THIRD/SF33RD.AFS", "SF33RD.AFS");
+    bool success = false;
+    for (size_t i = 0; i < SDL_arraysize(kAfsCandidates) && !success; i++) {
+        char* src_path = NULL;
+        SDL_asprintf(&src_path, "%s/%s", rom_path, kAfsCandidates[i]);
+        const bool present = file_exists(src_path);
+        SDL_free(src_path);
+        if (present) {
+            success = copy_file(rom_path, kAfsCandidates[i], "SF33RD.AFS");
+        }
+    }
+    if (!success) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "No SF33RD.AFS (or THIRD/SF33RD.AFS) found in %s", rom_path);
+    }
     flow_state = success ? COPY_SUCCESS : COPY_ERROR;
 }
 
@@ -175,8 +198,8 @@ bool Resources_RunResourceCopyingFlow() {
 #ifdef __ANDROID__
             "3SX needs the SF33RD.AFS ROM to run. Please select your SF33RD.AFS file in the next dialog.",
 #else
-            "3SX needs resources from a copy of \"Street Fighter III: 3rd Strike\" to run. Choose "
-            "a location with the game files in the next dialog",
+            "3SX needs SF33RD.AFS from your copy of \"Street Fighter III: 3rd Strike\" to run. In the "
+            "next dialog choose the folder that contains SF33RD.AFS (or the disc folder with THIRD/SF33RD.AFS)",
 #endif
             SDLApp_GetWindow());
         flow_state = DIALOG_OPENED;

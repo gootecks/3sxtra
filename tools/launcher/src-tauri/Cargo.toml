@@ -32,6 +32,7 @@ futures-util = "0.3"
 zip = "0.6.3"
 tar = "0.4"
 flate2 = "1"
+sha2 = "0.10"
 
 [profile.release]
 strip = true       # Strip debug symbols
@@ -39,3 +40,8 @@ lto = true          # Link-time optimization (aggressive dead code elimination)
 codegen-units = 1   # Single codegen unit for maximum optimization
 opt-level = "s"     # Optimize for size
 panic = "abort"     # No unwinding overhead
+
+# Stripped proc-macro dylibs fail to dlopen on recent macOS ("mis-aligned
+# LINKEDIT string pool"); keep host build scripts/proc-macros unstripped.
+[profile.release.build-override]
+strip = false

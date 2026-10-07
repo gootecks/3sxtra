@@ -12,6 +12,7 @@
 #include "port/sdl/app/sdl_app.h"
 #include "port/sdl/app/sdl_app_config.h"
 #include "port/sdl/app/sdl_app_internal.h"
+#include "port/sdl/app/sdl_app_shader_blocklist.h"
 #include "shaders/glslp_parser.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -78,6 +79,16 @@ static void scan_presets_recursive(const char* base_path, const char* relative_p
                 bool is_slangp = (len > 7 && strcmp(entry + len - 7, ".slangp") == 0);
 
                 if (is_slangp) {
+                    char preset_rel_path[1024];
+                    if (relative_path[0] == '\0') {
+                        snprintf(preset_rel_path, sizeof(preset_rel_path), "%s", entry);
+                    } else {
+                        snprintf(preset_rel_path, sizeof(preset_rel_path), "%s/%s", relative_path, entry);
+                    }
+                    if (SDLAppShader_IsPresetBlocked(preset_rel_path)) {
+                        continue;
+                    }
+
                     // Found a valid preset/shader
                     if (*count >= *capacity) {
                         *capacity *= 2;
@@ -85,14 +96,6 @@ static void scan_presets_recursive(const char* base_path, const char* relative_p
                             *capacity = 16;
                         *list = (char**)SDL_realloc(*list, *capacity * sizeof(char*));
                     }
-
-                    char preset_rel_path[1024];
-                    if (relative_path[0] == '\0') {
-                        snprintf(preset_rel_path, sizeof(preset_rel_path), "%s", entry);
-                    } else {
-                        snprintf(preset_rel_path, sizeof(preset_rel_path), "%s/%s", relative_path, entry);
-                    }
-
                     (*list)[*count] = SDL_strdup(preset_rel_path);
                     (*count)++;
                 }

@@ -6,7 +6,6 @@ name: Build macOS Bundle (3SXtra.app)
 
 on:
     workflow_call:
-    workflow_dispatch:
 
 jobs:
     bundle:

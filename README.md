@@ -3,12 +3,12 @@
 [![Windows](https://github.com/3sxtra/3sxtra/actions/workflows/build_windows.yml/badge.svg)](https://github.com/3sxtra/3sxtra/actions/workflows/build_windows.yml)
 [![Linux](https://github.com/3sxtra/3sxtra/actions/workflows/build_linux.yml/badge.svg)](https://github.com/3sxtra/3sxtra/actions/workflows/build_linux.yml)
 [![Linux ARM64](https://github.com/3sxtra/3sxtra/actions/workflows/build_linux_arm64.yml/badge.svg)](https://github.com/3sxtra/3sxtra/actions/workflows/build_linux_arm64.yml)
-[![macOS](https://github.com/3sxtra/3sxtra/actions/workflows/build_macos.yml/badge.svg)](https://github.com/3sxtra/3sxtra/actions/workflows/build_macos.yml)
+[![macOS](https://github.com/gootecks/3sxtra/actions/workflows/release_macos.yml/badge.svg)](https://github.com/gootecks/3sxtra/releases/tag/macos-rolling)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 
 > [!NOTE]
-> Experimental, unofficial fork. macOS and mainline Linux are lightly tested. Raspberry Pi 4 / Batocera is the primary Linux target.
+> Experimental, unofficial fork. **macOS (Apple Silicon + Intel) is the supported release target of this fork**: download `3SXtra-*-macos-universal.dmg` from the [`macos-rolling` release](https://github.com/gootecks/3sxtra/releases/tag/macos-rolling) (launcher and engine in one app; see [docs/macos.md](docs/macos.md)). Other platforms build from source but are not released here.
 
 Binary: `3sx` (`3sx.exe` on Windows).
 
@@ -156,7 +156,7 @@ All fork-only optimizations:
 | **Raspberry Pi 4 / Batocera** | Full cross-compilation + integration |
 | **Linux x86-64** | Tested |
 | **Linux ARM64** | Native support |
-| **macOS** (Intel + Apple Silicon) | Builds, not actively tested |
+| **macOS** (Intel + Apple Silicon, 13+) | Universal `3SXtra.app` released from this fork |
 | **Flatpak** | Packaging defined, not actively tested |
 
 ### Portable Mode

@@ -48,8 +48,22 @@ ties prefer the earlier entry. `<pref>` is
 use the portable `config/` directory instead when one exists, as the engine does).
 
 The updater only downloads `3SX-<sha>-macos-universal.zip` engine assets from
-gootecks/3sxtra releases, unpacks them with `ditto` into `<pref>/engine` and
-strips quarantine. The launcher itself updates by replacing `3SXtra.app`.
+the gootecks/3sxtra `macos-rolling` release, unpacks them with `ditto` into
+`<pref>/engine` and strips quarantine. The launcher itself updates by replacing
+`3SXtra.app`.
+
+## Releases
+
+macOS ships on its own, independent of the other platforms
+(`.github/workflows/release_macos.yml`; `release.yml` no longer builds macOS):
+
+- Every push to `main` (or a manual dispatch) builds the universal engine and
+  `3SXtra.app`, then refreshes the `macos-rolling` pre-release with
+  `3SXtra-<sha>-macos-universal.{dmg,zip}`, `3SX-<sha>-macos-universal.{dmg,zip}`
+  and `SHA256SUMS.txt`. New assets are uploaded before old ones are pruned.
+- Pushing a `macos-v*` tag also publishes a release for that tag (marked
+  pre-release when the tag has a `-` suffix, e.g. `macos-v0.1.0-rc.1`).
+- FreeFighter installs `3SXtra-*-macos-universal.zip` from `macos-rolling`.
 
 ## ROM (SF33RD.AFS)
 

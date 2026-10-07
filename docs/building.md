@@ -160,4 +160,4 @@ When HEAD carries a `vX.Y.Z` tag, `CFBundleShortVersionString` is set to `X.Y.Z`
 
 The bundle is only ad-hoc signed — it is not Developer ID signed or notarised. Downloaded copies are quarantined by Gatekeeper; right-click → **Open** on first launch, or run `xattr -dr com.apple.quarantine 3sx.app`.
 
-CI (`build_macos.yml`) runs exactly these two steps with `TARGET_ARCH=universal` and uploads `3SX-<sha>-macos-universal.{dmg,zip}` for releases.
+CI (`build_macos.yml`) runs exactly these two steps with `TARGET_ARCH=universal`; `release_macos.yml` publishes the results (see [macos.md](macos.md#releases)).

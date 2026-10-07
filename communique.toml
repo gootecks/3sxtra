@@ -1,0 +1,9 @@
+context = "3SXtra is an experimental, unofficial fork of the 3SX Third Strike emulator, maintained in gootecks/3sxtra. macOS (Apple Silicon + Intel) via the 3SXtra.app engine is the primary release target."
+system_extra = "Write concise, factual release notes grounded in the selected commit range. Focus on engine, netplay, rendering, and platform changes."
+
+[defaults]
+model = "openai/gpt-6-luna"
+provider = "openai"
+base_url = "https://api.llmgateway.io/v1"
+max_tokens = 16384
+repo = "gootecks/3sxtra"

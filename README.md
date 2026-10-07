@@ -12,6 +12,8 @@
 
 Binary: `3sx` (`3sx.exe` on Windows).
 
+> Release notes and changelogs are generated with `mise` tasks — see [docs/macos.md#release-notes](docs/macos.md#release-notes).
+
 ---
 
 ## Quick Start

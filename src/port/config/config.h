@@ -25,6 +25,7 @@ extern "C" {
 #define CFG_KEY_SCALEMODE "scale-mode"
 #define CFG_KEY_SCALE_STRETCH "scale-stretch"
 #define CFG_KEY_RENDERER "renderer"
+#define CFG_KEY_GPU_DRIVER "gpu-driver"
 #define CFG_KEY_DRAW_RECT_BORDERS "draw-rect-borders"
 #define CFG_KEY_DUMP_TEXTURES "dump-textures"
 #define CFG_KEY_SHADER_MODE_LIBRETRO "shader-mode-libretro"

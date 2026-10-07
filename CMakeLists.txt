@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.24)
+
+# macOS: minimum OS for the app and every bundled dependency (matches build-deps.sh and
+# cmake/Info.plist). Build universal with -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64".
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS version")
+
 project(3sx LANGUAGES C CXX)
 
 # ======================================
@@ -47,6 +52,17 @@ endif()
 if(NOT PLATFORM_RPI4)
     if(SDL3_ROOT)
         set(ENV{SKIP_SDL3_BUILD} "1")
+    endif()
+    if(APPLE)
+        # Keep build-deps.sh in lockstep with this configure's architectures/deployment target.
+        if(NOT DEFINED ENV{TARGET_ARCH} AND CMAKE_OSX_ARCHITECTURES)
+            if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64" AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+                set(ENV{TARGET_ARCH} "universal")
+            else()
+                set(ENV{TARGET_ARCH} "${CMAKE_OSX_ARCHITECTURES}")
+            endif()
+        endif()
+        set(ENV{MACOSX_DEPLOYMENT_TARGET} "${CMAKE_OSX_DEPLOYMENT_TARGET}")
     endif()
     execute_process(COMMAND bash build-deps.sh
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -515,6 +531,9 @@ if(PLATFORM_RPI4)
     # ARM Cortex-A72 (RPi4): NEON is baseline, add crypto+CRC extensions.
     # -O3 overrides RelWithDebInfo's -O2 for max throughput on the constrained Pi4.
     target_compile_options(3sx PRIVATE -O3 -mcpu=cortex-a72 -mtune=cortex-a72)
+elseif(APPLE)
+    # Universal-safe: SSE4.2 only for the x86_64 slice (all macOS 13-capable Intel Macs have it).
+    target_compile_options(3sx PRIVATE "SHELL:-Xarch_x86_64 -msse4.2")
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
     # Generic ARM64: NEON is baseline, no specific CPU tuning.
     message(STATUS "SIMD: ARM64 target — NEON is implicit, no extra flags needed")
@@ -575,17 +594,17 @@ endif()
 if(UNIX)
     target_link_libraries(3sx PRIVATE dl pthread curl)
 
-
-
-    # Homebrew on macOS ARM installs to /opt/homebrew
-    if(APPLE)
-        list(APPEND CMAKE_PREFIX_PATH /opt/homebrew /usr/local)
-        include_directories(/opt/homebrew/include)
-        link_directories(/opt/homebrew/lib)
-    endif()
-
     if(ENABLE_NETPLAY)
-        find_library(MINIUPNPC_LIB miniupnpc HINTS /opt/homebrew/lib /usr/local/lib)
+        if(APPLE)
+            # Static, arch-matched miniupnpc built by build-deps.sh (no Homebrew dependency).
+            # Re-find every configure so old build dirs drop a cached Homebrew path.
+            unset(MINIUPNPC_LIB CACHE)
+            find_library(MINIUPNPC_LIB NAMES libminiupnpc.a miniupnpc
+                HINTS "${THIRD_PARTY_DIR}/miniupnpc/build/lib" NO_DEFAULT_PATH)
+            target_include_directories(3sx PRIVATE "${THIRD_PARTY_DIR}/miniupnpc/build/include")
+        else()
+            find_library(MINIUPNPC_LIB miniupnpc HINTS /usr/local/lib)
+        endif()
         if(MINIUPNPC_LIB)
             target_link_libraries(3sx PRIVATE ${MINIUPNPC_LIB})
             target_compile_definitions(3sx PRIVATE HAVE_UPNP)
@@ -622,8 +641,12 @@ if(WIN32)
 endif()
 
 
+# Bundle version shown in Finder/About (package-engine.sh passes the release tag version).
+set(MACOS_BUNDLE_VERSION "1.0" CACHE STRING "macOS CFBundleShortVersionString / CFBundleVersion")
 set_target_properties(3sx PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/cmake/Info.plist"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${MACOS_BUNDLE_VERSION}"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${MACOS_BUNDLE_VERSION}"
 )
 
 if(APPLE)
@@ -864,6 +887,12 @@ endif()
 # The build dir sees it transparently: build/assets/shaders/libretro resolves
 # through the first junction to the source, then the second to slang-shaders.
 # ---------------------------------------------------------------------------
+if(APPLE)
+    set(_3SX_DATA_DIR "$<TARGET_BUNDLE_CONTENT_DIR:3sx>/Resources")
+else()
+    set(_3SX_DATA_DIR "$<TARGET_FILE_DIR:3sx>")
+endif()
+
 if(WIN32)
     # Convert paths to native backslashes for mklink /J
     file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/assets" _ASSETS_SRC)
@@ -897,14 +926,15 @@ if(WIN32)
 else()
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         add_custom_command(TARGET 3sx POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:3sx>/assets"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_3SX_DATA_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/assets" "${_3SX_DATA_DIR}/assets"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_SOURCE_DIR}/src/shaders" "$<TARGET_FILE_DIR:3sx>/shaders"
+                "${CMAKE_SOURCE_DIR}/src/shaders" "${_3SX_DATA_DIR}/shaders"
             COMMENT "Symlinking assets + copying shaders"
         )
         if(ENABLE_LIBRASHADER)
             add_custom_command(TARGET 3sx POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E create_symlink "${THIRD_PARTY_DIR}/slang-shaders" "$<TARGET_FILE_DIR:3sx>/assets/shaders/libretro"
+                COMMAND ${CMAKE_COMMAND} -E create_symlink "${THIRD_PARTY_DIR}/slang-shaders" "${_3SX_DATA_DIR}/assets/shaders/libretro"
                 COMMAND ${CMAKE_COMMAND} -E copy_directory
                     "${CMAKE_SOURCE_DIR}/assets/shaders/custom" "${THIRD_PARTY_DIR}/slang-shaders/custom"
                 COMMENT "Symlinking libretro shaders + copying custom presets"
@@ -917,21 +947,21 @@ endif()
 if(ENABLE_TRAINING)
     add_custom_command(TARGET 3sx POST_BUILD
         # Lua scripts for trials/training
-        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:3sx>/lua
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${_3SX_DATA_DIR}/lua
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/assets/lua/sf3_3rd_trial_lua/sf3_3rd_trial_clean.lua $<TARGET_FILE_DIR:3sx>/lua/sf3_3rd_trial_clean.lua
+        ${CMAKE_SOURCE_DIR}/assets/lua/sf3_3rd_trial_lua/sf3_3rd_trial_clean.lua ${_3SX_DATA_DIR}/lua/sf3_3rd_trial_clean.lua
         # Lua compat modules (FBNeo API shim)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets/lua/compat $<TARGET_FILE_DIR:3sx>/lua/compat
+        ${CMAKE_SOURCE_DIR}/assets/lua/compat ${_3SX_DATA_DIR}/lua/compat
         # Training mode bootstrap
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/assets/lua/training_main.lua $<TARGET_FILE_DIR:3sx>/lua/training_main.lua
+        ${CMAKE_SOURCE_DIR}/assets/lua/training_main.lua ${_3SX_DATA_DIR}/lua/training_main.lua
         # Effie's training Lua modules (data, tools, prediction)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets/lua/3rd_training_lua-main/src $<TARGET_FILE_DIR:3sx>/lua/src
+        ${CMAKE_SOURCE_DIR}/assets/lua/3rd_training_lua-main/src ${_3SX_DATA_DIR}/lua/src
         # Effie's framedata JSONs
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets/lua/3rd_training_lua-main/data $<TARGET_FILE_DIR:3sx>/lua/data
+        ${CMAKE_SOURCE_DIR}/assets/lua/3rd_training_lua-main/data ${_3SX_DATA_DIR}/lua/data
     )
 endif()
 
@@ -976,6 +1006,8 @@ install(DIRECTORY src/shaders DESTINATION bin)
 
 
 if(APPLE)
+    # Self-contained release bundles are produced by tools/macos/package-engine.sh;
+    # this install rule only mirrors the dylib layout it uses (install names are *.0.dylib).
     install(TARGETS 3sx
         RUNTIME DESTINATION bin
         BUNDLE DESTINATION .
@@ -983,13 +1015,13 @@ if(APPLE)
 
     install(FILES
         ${SDL3_ROOT}/lib/libSDL3.0.dylib
-        ${SDL3_IMAGE_ROOT}/lib/libSDL3_image.dylib
-        ${SDL3_MIXER_ROOT}/lib/libSDL3_mixer.dylib
-        DESTINATION 3SX.app/Contents/Frameworks
+        ${SDL3_IMAGE_ROOT}/lib/libSDL3_image.0.dylib
+        ${SDL3_MIXER_ROOT}/lib/libSDL3_mixer.0.dylib
+        DESTINATION 3sx.app/Contents/Frameworks
     )
     if(ENABLE_NETPLAY)
-        install(FILES ${SDL3_NET_DIR}/lib/libSDL3_net.dylib
-            DESTINATION 3SX.app/Contents/Frameworks)
+        install(FILES ${SDL3_NET_DIR}/lib/libSDL3_net.0.dylib
+            DESTINATION 3sx.app/Contents/Frameworks)
     endif()
 elseif(WIN32)
     install(TARGETS 3sx

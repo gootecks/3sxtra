@@ -68,4 +68,84 @@
 #endif
 #endif
 
+#if !GL_COMPAT_ES
+#include <stddef.h>
+
+static inline void gl_compat_tex_format(GLenum internalformat, GLenum* format, GLenum* type) {
+    switch (internalformat) {
+    case GL_R8:
+        *format = GL_RED;
+        *type = GL_UNSIGNED_BYTE;
+        break;
+    case GL_R8UI:
+        *format = GL_RED_INTEGER;
+        *type = GL_UNSIGNED_BYTE;
+        break;
+    case GL_RGBA16F:
+        *format = GL_RGBA;
+        *type = GL_HALF_FLOAT;
+        break;
+    case GL_RGBA32F:
+        *format = GL_RGBA;
+        *type = GL_FLOAT;
+        break;
+    case GL_DEPTH_COMPONENT16:
+    case GL_DEPTH_COMPONENT24:
+    case GL_DEPTH_COMPONENT32:
+        *format = GL_DEPTH_COMPONENT;
+        *type = GL_UNSIGNED_INT;
+        break;
+    case GL_DEPTH24_STENCIL8:
+        *format = GL_DEPTH_STENCIL;
+        *type = GL_UNSIGNED_INT_24_8;
+        break;
+    default:
+        *format = GL_RGBA;
+        *type = GL_UNSIGNED_BYTE;
+        break;
+    }
+}
+
+static inline void gl_compat_tex_storage_2d(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width,
+                                            GLsizei height) {
+    if (glad_glTexStorage2D) {
+        glad_glTexStorage2D(target, levels, internalformat, width, height);
+        return;
+    }
+    GLenum format, type;
+    gl_compat_tex_format(internalformat, &format, &type);
+    for (GLsizei level = 0; level < levels; level++) {
+        glTexImage2D(target, level, (GLint)internalformat, width, height, 0, format, type, NULL);
+        width = width > 1 ? width / 2 : 1;
+        height = height > 1 ? height / 2 : 1;
+    }
+    glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, levels - 1);
+}
+
+static inline void gl_compat_tex_storage_3d(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width,
+                                            GLsizei height, GLsizei depth) {
+    if (glad_glTexStorage3D) {
+        glad_glTexStorage3D(target, levels, internalformat, width, height, depth);
+        return;
+    }
+    GLenum format, type;
+    gl_compat_tex_format(internalformat, &format, &type);
+    for (GLsizei level = 0; level < levels; level++) {
+        glTexImage3D(target, level, (GLint)internalformat, width, height, depth, 0, format, type, NULL);
+        width = width > 1 ? width / 2 : 1;
+        height = height > 1 ? height / 2 : 1;
+        if (target == GL_TEXTURE_3D)
+            depth = depth > 1 ? depth / 2 : 1;
+    }
+    glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, levels - 1);
+}
+
+#undef glTexStorage2D
+#define glTexStorage2D gl_compat_tex_storage_2d
+#undef glTexStorage3D
+#define glTexStorage3D gl_compat_tex_storage_3d
+#endif
+
 #endif /* GL_COMPAT_H */

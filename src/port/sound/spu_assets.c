@@ -1,5 +1,6 @@
 #include "port/sound/spu.h"
 #include "common.h"
+#include "port/config/paths.h"
 #include "structs.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -26,7 +27,7 @@ s8* LoadPHDData(int index) {
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "assets/sound/%s.phd", char_names[index]);
 
-    FILE* f = fopen(filepath, "rb");
+    FILE* f = fopen(Paths_ResolveAsset(filepath), "rb");
     if (!f) {
         printf("Failed to load %s\n", filepath);
         return NULL;
@@ -59,7 +60,7 @@ SoundEvent* LoadTSBData(int index) {
     char filepath[256];
     snprintf(filepath, sizeof(filepath), "assets/sound/%s.tsb", char_names[index]);
 
-    FILE* f = fopen(filepath, "rb");
+    FILE* f = fopen(Paths_ResolveAsset(filepath), "rb");
     if (!f) {
         printf("Failed to load %s\n", filepath);
         return NULL;

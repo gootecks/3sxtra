@@ -69,10 +69,8 @@ void SDLGameRendererGPU_Init(void) {
         return;
     }
 
-    if (!SDL_ShaderCross_Init()) {
-        SDL_LogError(SDL_LOG_CATEGORY_RENDER, "Failed to initialize SDL_ShaderCross: %s", SDL_GetError());
-        return;
-    }
+    // SDL_ShaderCross_Init() already ran in SDLAppGPU_CreateDevice (needed before
+    // device creation to know which shader formats to request).
 
     // Load Shaders (Expects SPIR-V)
     const char* base_path = Paths_GetBasePath();

@@ -3,12 +3,12 @@
 [![Windows](https://github.com/3sxtra/3sxtra/actions/workflows/build_windows.yml/badge.svg)](https://github.com/3sxtra/3sxtra/actions/workflows/build_windows.yml)
 [![Linux](https://github.com/3sxtra/3sxtra/actions/workflows/build_linux.yml/badge.svg)](https://github.com/3sxtra/3sxtra/actions/workflows/build_linux.yml)
 [![Linux ARM64](https://github.com/3sxtra/3sxtra/actions/workflows/build_linux_arm64.yml/badge.svg)](https://github.com/3sxtra/3sxtra/actions/workflows/build_linux_arm64.yml)
-[![macOS](https://github.com/3sxtra/3sxtra/actions/workflows/build_macos.yml/badge.svg)](https://github.com/3sxtra/3sxtra/actions/workflows/build_macos.yml)
+[![macOS](https://github.com/gootecks/3sxtra/actions/workflows/release_macos.yml/badge.svg)](https://github.com/gootecks/3sxtra/releases/tag/macos-rolling)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 
 > [!NOTE]
-> Experimental, unofficial fork. macOS and mainline Linux are lightly tested. Raspberry Pi 4 / Batocera is the primary Linux target.
+> Experimental, unofficial fork. **macOS (Apple Silicon + Intel) is the supported release target of this fork**: download `3SXtra-*-macos-universal.dmg` from the [`macos-rolling` release](https://github.com/gootecks/3sxtra/releases/tag/macos-rolling) (launcher and engine in one app; see [docs/macos.md](docs/macos.md)). Other platforms build from source but are not released here.
 
 Binary: `3sx` (`3sx.exe` on Windows).
 
@@ -26,11 +26,11 @@ Binary: `3sx` (`3sx.exe` on Windows).
 
 | Backend | API | Notes |
 |---|---|---|
-| **OpenGL 3.3+** | GLSL | Texture array batching, PBO async uploads, compute-shader palette conversion |
-| **SDL_GPU** | Vulkan / Metal / DX12 | Via SDL3's `SDL_GPU` API |
-| **SDL2D** | SDL3 2D | Software fallback |
+| **OpenGL** (default) | GLSL (4.1 core on macOS) | Texture array batching, PBO async uploads, compute-shader palette conversion, libretro presets |
+| **SDL_GPU** | Metal / Vulkan / D3D12 | Via SDL3's `SDL_GPU` API; SPIR-V shaders translated at runtime by SDL_shadercross |
+| **SDL2D** | SDL3 2D | Simple fallback |
 
-Select with `--renderer gl`, `--renderer gpu`, or `--renderer sdl`.
+Select with `--renderer gl|gpu|sdl|classic` (or `renderer =` in `config`). Pick the SDL_GPU driver with `--gpu-driver auto|metal|vulkan|d3d12` (config `gpu-driver`). GPU falls back to automatic driver selection, then OpenGL, then SDL2D. See [docs/render-drivers.md](docs/render-drivers.md) for the driver matrix and Vulkan on macOS (MoltenVK / KosmicKrisp).
 
 ### Visuals & Mods Menu
 
@@ -156,7 +156,7 @@ All fork-only optimizations:
 | **Raspberry Pi 4 / Batocera** | Full cross-compilation + integration |
 | **Linux x86-64** | Tested |
 | **Linux ARM64** | Native support |
-| **macOS** (Intel + Apple Silicon) | Builds, not actively tested |
+| **macOS** (Intel + Apple Silicon, 13+) | Universal `3SXtra.app` released from this fork |
 | **Flatpak** | Packaging defined, not actively tested |
 
 ### Portable Mode
@@ -175,6 +175,7 @@ Create `config/` next to the executable. All saves, replays, and settings stay l
 Usage: 3sx [options] [player_side remote_ip]
 
   --renderer <backend>       gl, gpu, sdl, or classic (default: gl)
+  --gpu-driver <driver>      auto, metal, vulkan, or d3d12 (SDL_GPU only; default: auto)
   --volume 0-100             Master volume (default: 100)
   --scale <factor>           Resolution multiplier (default: 1)
   --port <number>            Netplay UDP port (default: 50000)

@@ -9,6 +9,7 @@
 #include "port/config/cli_parser.h"
 #include "port/broadcast.h"
 #include "port/sdl/app/sdl_app.h"
+#include "port/sdl/app/sdl_app_gpu_device.h"
 
 // Globals needed by ParseCLI
 #include "configuration.h"
@@ -20,6 +21,7 @@ float g_master_volume = 1.0f;
 
 // Mock state
 static RendererBackend last_renderer_backend = RENDERER_OPENGL;
+static const char* last_gpu_driver = NULL;
 
 // Mocks
 void SDLApp_SetWindowPosition(int x, int y) {
@@ -30,6 +32,9 @@ void SDLApp_SetWindowSize(int w, int h) {
 }
 void SDLApp_SetRenderer(RendererBackend backend) {
     last_renderer_backend = backend;
+}
+void SDLAppGPU_SetDriverOverride(const char* driver) {
+    last_gpu_driver = driver;
 }
 int SDL_atoi(const char* str) {
     return atoi(str);
@@ -144,6 +149,18 @@ static void test_cli_scale_bounds(void **state) {
     assert_int_equal(g_resolution_scale, 2);
 }
 
+static void test_cli_gpu_driver(void **state) {
+    (void) state;
+    last_gpu_driver = NULL;
+
+    char* argv[] = {"3sx", "--renderer", "gpu", "--gpu-driver", "metal"};
+    ParseCLI(5, argv);
+
+    assert_int_equal(last_renderer_backend, RENDERER_SDLGPU);
+    assert_non_null(last_gpu_driver);
+    assert_string_equal(last_gpu_driver, "metal");
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_cli_enable_broadcast),
@@ -152,6 +169,7 @@ int main(void) {
         cmocka_unit_test(test_cli_renderer_sdl),
         cmocka_unit_test(test_cli_renderer_sdl2d),
         cmocka_unit_test(test_cli_scale_bounds),
+        cmocka_unit_test(test_cli_gpu_driver),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

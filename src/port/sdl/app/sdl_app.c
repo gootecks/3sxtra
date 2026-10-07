@@ -43,6 +43,7 @@
 #include "port/config/cli_parser.h"
 #include "configuration.h"
 #include "port/renderer_plugin.h"
+#include "port/sdl/app/sdl_app_gpu_device.h"
 #include "port/sdl/netplay/sdl_netplay_ui.h"
 #include "port/sdl/rmlui/rmlui_attract_overlay.h"
 #include "port/sdl/rmlui/rmlui_button_config.h"
@@ -632,6 +633,21 @@ static void set_gl_context_attributes(void) {
 #endif
 }
 
+/** @brief Create the window + SDL_Renderer for the SDL2D backends (also the last-resort fallback). */
+static bool create_sdl2d_window_and_renderer(int width, int height, SDL_WindowFlags flags) {
+    if (!SDL_CreateWindowAndRenderer(app_name, width, height, flags, &window, &sdl_renderer)) {
+        return false;
+    }
+    SDL_SetRenderDrawBlendMode(sdl_renderer, SDL_BLENDMODE_BLEND);
+    SDL_Log("Renderer: SDL2D (SDL_Renderer '%s')", SDL_GetRendererName(sdl_renderer));
+
+    // VSync OFF — native frame pacing handles timing for all backends.
+    vsync_enabled = false;
+    SDL_SetRenderVSync(sdl_renderer, 0);
+    SDL_Log("VSync: OFF (SDL2D, native pacing)");
+    return true;
+}
+
 /** @brief Initialize SDL3, create window + GL context, compile shaders, load config. */
 int SDLApp_Init() {
     Config_Init();
@@ -688,6 +704,10 @@ int SDLApp_Init() {
                 g_renderer_backend = RENDERER_SDL2D_CLASSIC;
             else if (strcmp(cfg_renderer, "gl") == 0)
                 g_renderer_backend = RENDERER_OPENGL;
+            else
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Invalid config renderer '%s' (auto|gl|gpu|sdl|classic); using platform default",
+                            cfg_renderer);
         }
     }
 
@@ -753,16 +773,9 @@ int SDLApp_Init() {
 
     if (is_sdl2d_backend(g_renderer_backend)) {
         // SDL2D: use SDL_CreateWindowAndRenderer — no GL context, no GPU device
-        if (!SDL_CreateWindowAndRenderer(app_name, width, height, window_flags, &window, &sdl_renderer)) {
+        if (!create_sdl2d_window_and_renderer(width, height, window_flags)) {
             fatal_error("SDL2D: Couldn't create window/renderer: %s", SDL_GetError());
         }
-        SDL_SetRenderDrawBlendMode(sdl_renderer, SDL_BLENDMODE_BLEND);
-        SDL_Log("Renderer: SDL2D (SDL_Renderer)");
-
-        // VSync OFF — native frame pacing handles timing for all backends.
-        vsync_enabled = false;
-        SDL_SetRenderVSync(sdl_renderer, 0);
-        SDL_Log("VSync: OFF (SDL2D, native pacing)");
     } else {
         window = SDL_CreateWindow(app_name, width, height, window_flags);
         if (!window) {
@@ -807,34 +820,13 @@ int SDLApp_Init() {
     SDL_GLContext gl_context = NULL;
 
     if (g_renderer_backend == RENDERER_SDLGPU) {
-        // GPU Backend Initialization
+        // GPU Backend Initialization (driver selection + fallback chain: sdl_app_gpu_device.c)
         bool gpu_debug = (SDL_getenv("SDL_GPU_DEBUG") != NULL);
         if (gpu_debug)
-            SDL_Log("GPU debug mode ENABLED (Vulkan validation layers active).");
-        gpu_device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, gpu_debug, NULL);
-#ifdef PLATFORM_RPI4
-        // V3D GPU: retry with reduced feature set if default creation failed
+            SDL_Log("GPU debug mode ENABLED (driver validation layers active).");
+        gpu_device = SDLAppGPU_CreateDevice(window, gpu_debug);
         if (!gpu_device) {
-            SDL_Log("SDL_GPU: Retrying with reduced features for V3D...");
-            SDL_PropertiesID props = SDL_CreateProperties();
-            SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
-            SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, gpu_debug);
-            // Disable features V3D doesn't support
-            SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_ANISOTROPY_BOOLEAN, false);
-            SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_DEPTH_CLAMPING_BOOLEAN, false);
-            SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_CLIP_DISTANCE_BOOLEAN, false);
-            SDL_SetBooleanProperty(
-                props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_INDIRECT_DRAW_FIRST_INSTANCE_BOOLEAN, false);
-            // Disable 'near universal' features not supported by V3D (patched in SDL3)
-            SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.image_cube_array", false);
-            SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.independent_blend", false);
-            SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.sample_rate_shading", false);
-            gpu_device = SDL_CreateGPUDeviceWithProperties(props);
-            SDL_DestroyProperties(props);
-        }
-#endif
-        if (!gpu_device) {
-            SDL_Log("Failed to create SDL_GPU device: %s — falling back to OpenGL", SDL_GetError());
+            SDL_Log("[GPU] No SDL_GPU driver could be created — falling back to OpenGL");
             g_renderer_backend = RENDERER_OPENGL;
             // Re-create window with OpenGL flags
             if (window) {
@@ -850,11 +842,7 @@ int SDLApp_Init() {
             }
             goto opengl_init;
         }
-        if (!SDL_ClaimWindowForGPUDevice(gpu_device, window)) {
-            SDL_Log("Failed to claim SDL_GPU window: %s", SDL_GetError());
-            return 1;
-        }
-        SDL_Log("SDL_GPU Initialized Successfully.");
+        SDL_Log("SDL_GPU Initialized Successfully (driver: %s).", SDL_GetGPUDeviceDriver(gpu_device));
 
         // VSync OFF — native frame pacing handles timing.
         // MAILBOX preferred: drops stale frames, giving 2× less frame-time variance
@@ -887,11 +875,15 @@ int SDLApp_Init() {
         gl_context = SDL_GL_CreateContext(window);
         if (!gl_context) {
             SDL_LogError(SDL_LOG_CATEGORY_RENDER,
-                         "Failed to create OpenGL context: %s\n"
-                         "This GPU may only support OpenGL ES, not desktop OpenGL.\n"
-                         "Try: --renderer gpu (uses Vulkan via SDL_GPU)",
+                         "Failed to create OpenGL context: %s — falling back to SDL renderer (--renderer sdl)",
                          SDL_GetError());
-            return 1;
+            SDL_DestroyWindow(window);
+            window = NULL;
+            g_renderer_backend = RENDERER_SDL2D;
+            if (!create_sdl2d_window_and_renderer(width, height, window_flags & ~SDL_WINDOW_OPENGL)) {
+                fatal_error("No usable renderer: OpenGL and SDL_Renderer both failed: %s", SDL_GetError());
+            }
+            goto renderer_ready;
         }
 
 #ifdef __ANDROID__
@@ -938,6 +930,7 @@ int SDLApp_Init() {
         }
 #endif
     }
+renderer_ready:
     // else: SDL2D — window and renderer already created above
 
     SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "Initializing Game Renderer...");

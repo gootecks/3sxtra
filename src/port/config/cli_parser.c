@@ -8,6 +8,7 @@
 #include "port/broadcast.h"
 #include "port/config/config.h"
 #include "port/sdl/app/sdl_app.h"
+#include "port/sdl/app/sdl_app_gpu_device.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,8 +53,8 @@ static void verify_configuration(void) {
 /**
  * @brief Parse command-line arguments and configure application state.
  *
- * Supports: --scale, --volume, --renderer, --plugin, --enable-broadcast,
- * --window-pos, --window-size, --shm-suffix, --port.
+ * Supports: --scale, --volume, --renderer, --gpu-driver, --plugin,
+ * --enable-broadcast, --window-pos, --window-size, --shm-suffix, --port.
  */
 
 void ParseCLI(int argc, char* argv[]) {
@@ -71,6 +72,7 @@ void ParseCLI(int argc, char* argv[]) {
             printf("  --scale <factor>          Internal resolution multiplier (default: 1)\n");
             printf("  --volume <0-100>          Master volume percentage (default: 100)\n");
             printf("  --renderer <gl|gpu|sdl|classic>  Renderer backend (default: gl)\n");
+            printf("  --gpu-driver <auto|metal|vulkan|d3d12>  SDL_GPU driver for --renderer gpu (default: auto)\n");
             printf("  --plugin <name|hd>        Load a renderer plugin (e.g. 'hd' -> renderer_hd)\n");
             printf("  --port <number>           Netplay game port (default: 50000)\n");
             printf("  --window-pos <x>,<y>      Initial window position\n");
@@ -135,8 +137,14 @@ void ParseCLI(int argc, char* argv[]) {
             } else if (strcmp(backend, "classic") == 0) {
                 SDLApp_SetRenderer(RENDERER_SDL2D_CLASSIC);
             } else {
+                if (strcmp(backend, "gl") != 0) {
+                    fprintf(stderr, "[CLI] Unknown --renderer '%s' (gl|gpu|sdl|classic); using gl\n", backend);
+                }
                 SDLApp_SetRenderer(RENDERER_OPENGL);
             }
+        } else if (strcmp(argv[i], "--gpu-driver") == 0 && i + 1 < argc) {
+            // Validated (and logged if invalid) when the GPU device is created.
+            SDLAppGPU_SetDriverOverride(argv[++i]);
         } else if (strcmp(argv[i], "--plugin") == 0 && i + 1 < argc) {
             const char* plugin = argv[++i];
             /* Shorthand: --plugin hd → renderer_hd */

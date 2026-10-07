@@ -37,6 +37,11 @@ jobs:
     with:
       release: true
 
+  build-macos-bundle:
+    name: Build (macOS 3SXtra.app)
+    needs: build-macos
+    uses: ./.github/workflows/build_macos_bundle.yml
+
   build-flatpak:
     name: Build (Flatpak)
     uses: ./.github/workflows/build_flatpak.yml
@@ -58,7 +63,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-linux, build-linux-arm64, build-windows, build-macos, build-flatpak, build-launcher, package-assets]
+    needs: [build-linux, build-linux-arm64, build-windows, build-macos, build-macos-bundle, build-flatpak, build-launcher, package-assets]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -96,6 +101,8 @@ jobs:
           | Linux | x86_64 | \`3SX-${SHORT_SHA}-linux-x86_64.tar.gz\` |
           | Linux | ARM64 | \`3SX-${SHORT_SHA}-linux-arm64.tar.gz\` |
           | Windows | x86_64 | \`3SX-${SHORT_SHA}-windows.zip\` |
+          | **macOS (launcher + engine, one app)** | Universal (Apple Silicon + Intel) | \`3SXtra-${SHORT_SHA}-macos-universal.dmg\` |
+          | **macOS (launcher + engine, one app)** | Universal (Apple Silicon + Intel) | \`3SXtra-${SHORT_SHA}-macos-universal.zip\` |
           | macOS | Universal (Apple Silicon + Intel) | \`3SX-${SHORT_SHA}-macos-universal.dmg\` |
           | macOS | Universal (Apple Silicon + Intel) | \`3SX-${SHORT_SHA}-macos-universal.zip\` |
           | Linux (Flatpak) | x86_64 | \`3sx.flatpak\` |
@@ -107,7 +114,7 @@ jobs:
           | Linux | ARM64 | \`3SX-Launcher-${SHORT_SHA}-linux-arm64\` |
 
           macOS builds are ad-hoc signed (not notarised): on first launch right-click the app and choose **Open**,
-          or run \`xattr -dr com.apple.quarantine 3sx.app\`.
+          or run \`xattr -dr com.apple.quarantine 3SXtra.app\` (or \`3sx.app\`).
           EOF
 
           { echo "Automatic release for commit ${FULL_SHA}"; echo

@@ -13,7 +13,7 @@ on:
                 default: false
 
 concurrency:
-    group: build-macos-arm64-${{ github.ref }}
+    group: build-macos-universal-${{ github.ref }}
     cancel-in-progress: true
 
 env:
@@ -24,6 +24,7 @@ jobs:
         runs-on: macos-latest
         env:
             MACOSX_DEPLOYMENT_TARGET: "13.0"
+            TARGET_ARCH: universal
 
         steps:
           - name: Checkout repository
@@ -33,8 +34,8 @@ jobs:
             uses: actions/cache@v5
             with:
                 path: third_party
-                key: macos-universal-deps-v2-${{ hashFiles('build-deps.sh') }}
-                restore-keys: macos-universal-deps-
+                key: macos-universal-deps-v3-${{ hashFiles('build-deps.sh') }}
+                restore-keys: macos-universal-deps-v3-
 
           - name: Cache Rust/Cargo
             uses: actions/cache@v5
@@ -47,48 +48,30 @@ jobs:
 
           - name: Install Rust toolchain
             uses: dtolnay/rust-toolchain@stable
+            with:
+                targets: aarch64-apple-darwin,x86_64-apple-darwin
 
           - name: Install dependencies
+            # Every native dependency (incl. miniupnpc) is built universal into third_party;
+            # zlib comes from the macOS SDK. Only build tools come from Homebrew.
             run: |
-                brew install miniupnpc zlib
                 brew list ninja &>/dev/null || brew install ninja
+                brew list shaderc &>/dev/null || brew install shaderc
                 python3 -m pip install --break-system-packages jinja2
                 bash build-deps.sh
 
           - name: Setup ccache
             uses: hendrikmuhs/ccache-action@v1.2.22
             with:
-                key: macos-arm64-ccache
+                key: macos-universal-ccache
 
-          - name: Build for macOS
+          - name: Build and package universal app
             run: |
                 set -o pipefail
                 BUILD_TYPE=${{ inputs.release && 'Release' || 'Debug' }}
-                INSTALL_ASSETS=${{ inputs.release && 'OFF' || 'ON' }}
-                cmake -B build \
-                  -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-                  -DENABLE_TESTS=OFF \
-                  -DINSTALL_ASSETS=$INSTALL_ASSETS \
-                  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                  -DZLIB_ROOT=$(brew --prefix zlib)
-                cmake --build build --parallel 2>&1 | tee build.log
-            shell: bash
-
-          - name: Package DMG with CPack
-            if: ${{ inputs.release }}
-            run: |
-                set -euo pipefail
-                cpack -G DragNDrop --config build/CPackConfig.cmake
-
-                DMG_PATH="$(find . -maxdepth 1 -type f -name '*.dmg' | head -n 1)"
-                if [ -z "${DMG_PATH}" ]; then
-                  echo "No .dmg package found"
-                  exit 1
-                fi
-
-                SHORT_SHA="${GITHUB_SHA::7}"
-                mv "${DMG_PATH}" "3SX-${SHORT_SHA}-macos.dmg"
+                PACKAGE_CMAKE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" \
+                  tools/macos/package-engine.sh --arch universal --build-type "$BUILD_TYPE" \
+                    --build-dir build --out dist/macos 2>&1 | tee build.log
             shell: bash
 
           - name: Upload release artifact
@@ -96,7 +79,10 @@ jobs:
             uses: actions/upload-artifact@v7
             with:
                 name: release-assets-macos
-                path: 3SX-*-macos.dmg
+                path: |
+                    dist/macos/3SX-*-macos-universal.dmg
+                    dist/macos/3SX-*-macos-universal.zip
+                if-no-files-found: error
 
           - name: Save build log (local act)
             if: ${{ always() && env.ACT }}
@@ -111,5 +97,3 @@ jobs:
             with:
                 name: build-log
                 path: build.log
-
-

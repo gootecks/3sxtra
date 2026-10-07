@@ -1,8 +1,8 @@
 name: Release (macOS)
 
 # macOS-only release, independent of the other platforms (release.yml).
-# Every run refreshes the `macos-rolling` pre-release, which the 3SXtra
-# launcher's updater and FreeFighter install from. Pushing a `macos-v*` tag
+# Every run refreshes the `macos-rolling` pre-release, which the 3SX
+# launcher's updater and FreeFighter install the engine from. Pushing a `macos-v*` tag
 # also publishes a release for that tag (a pre-release when the tag has a
 # `-` suffix, e.g. macos-v0.1.0-rc.1).
 
@@ -29,15 +29,10 @@ jobs:
     with:
       release: true
 
-  build-bundle:
-    name: Build (macOS 3SXtra.app)
-    needs: build-engine
-    uses: ./.github/workflows/build_macos_bundle.yml
-
   release:
     name: Publish macOS release
     runs-on: ubuntu-latest
-    needs: [build-engine, build-bundle]
+    needs: [build-engine]
     env:
       GH_TOKEN: ${{ github.token }}
       ROLLING_TAG: macos-rolling
@@ -66,15 +61,14 @@ jobs:
           ### Downloads (macOS 13+, Apple Silicon and Intel)
           | What | File |
           |------|------|
-          | **3SXtra.app**: launcher with the engine built in (recommended) | \`3SXtra-*-macos-universal.dmg\` / \`.zip\` |
-          | 3sx.app: engine only | \`3SX-*-macos-universal.dmg\` / \`.zip\` |
+          | 3sx.app (engine) | \`3SX-*-macos-universal.dmg\` / \`.zip\` |
           | Checksums | \`SHA256SUMS.txt\` |
 
-          Bring your own \`SF33RD.AFS\` from a PS2 3rd Strike / Anniversary Collection disc; the launcher can find
-          and import it from a mounted disc or ISO.
+          Bring your own \`SF33RD.AFS\` from a PS2 3rd Strike / Anniversary Collection disc. The launcher is
+          released separately from [gootecks/3sx-launcher](https://github.com/gootecks/3sx-launcher).
 
           Builds are ad-hoc signed, not notarised: on first launch right-click the app and choose **Open**,
-          or run \`xattr -dr com.apple.quarantine /Applications/3SXtra.app\`.
+          or run \`xattr -dr com.apple.quarantine /Applications/3sx.app\`.
           EOF
 
           { echo "Automatic macOS build of ${FULL_SHA} (${GITHUB_REF_NAME})."; echo

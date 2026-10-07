@@ -144,7 +144,8 @@ if [ -d "$GEKKONET_DIR" ]; then
     echo "GekkoNet already exists at $GEKKONET_DIR"
 else
     echo "Cloning GekkoNet..."
-    git clone --depth 1 https://github.com/HeatXD/GekkoNet.git "$GEKKONET_DIR"
+    git clone https://github.com/HeatXD/GekkoNet.git "$GEKKONET_DIR"
+    git -C "$GEKKONET_DIR" checkout --detach b5c6528
     echo "GekkoNet cloned to $GEKKONET_DIR"
 fi
 
@@ -263,7 +264,8 @@ else
 
     if [ ! -d "$SDL_NET_SRC" ]; then
         echo "Cloning SDL3_net from git..."
-        git clone --depth 1 https://github.com/libsdl-org/SDL_net.git "$SDL_NET_SRC"
+        git clone https://github.com/libsdl-org/SDL_net.git "$SDL_NET_SRC"
+        git -C "$SDL_NET_SRC" checkout --detach f4d56a7
     fi
 
     cd "$SDL_NET_SRC"
@@ -368,6 +370,7 @@ else
                 -DBUILD_SHARED_LIBS=ON \
                 -DSDLMIXER_VENDORED=ON \
                 -DSDLMIXER_EXAMPLES=OFF \
+                -DSDLMIXER_MIDI_FLUIDSYNTH=OFF \
                 $CMAKE_EXTRA_ARGS
             ;;
         MINGW*|MSYS*|CYGWIN*)
@@ -379,7 +382,8 @@ else
                 -DCMAKE_PREFIX_PATH="$SDL_BUILD" \
                 -DBUILD_SHARED_LIBS=ON \
                 -DSDLMIXER_VENDORED=ON \
-                -DSDLMIXER_EXAMPLES=OFF
+                -DSDLMIXER_EXAMPLES=OFF \
+                -DSDLMIXER_MIDI_FLUIDSYNTH=OFF
             ;;
     esac
 

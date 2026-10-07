@@ -864,6 +864,12 @@ endif()
 # The build dir sees it transparently: build/assets/shaders/libretro resolves
 # through the first junction to the source, then the second to slang-shaders.
 # ---------------------------------------------------------------------------
+if(APPLE)
+    set(_3SX_DATA_DIR "$<TARGET_BUNDLE_CONTENT_DIR:3sx>/Resources")
+else()
+    set(_3SX_DATA_DIR "$<TARGET_FILE_DIR:3sx>")
+endif()
+
 if(WIN32)
     # Convert paths to native backslashes for mklink /J
     file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/assets" _ASSETS_SRC)
@@ -897,14 +903,15 @@ if(WIN32)
 else()
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
         add_custom_command(TARGET 3sx POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:3sx>/assets"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_3SX_DATA_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/assets" "${_3SX_DATA_DIR}/assets"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_SOURCE_DIR}/src/shaders" "$<TARGET_FILE_DIR:3sx>/shaders"
+                "${CMAKE_SOURCE_DIR}/src/shaders" "${_3SX_DATA_DIR}/shaders"
             COMMENT "Symlinking assets + copying shaders"
         )
         if(ENABLE_LIBRASHADER)
             add_custom_command(TARGET 3sx POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E create_symlink "${THIRD_PARTY_DIR}/slang-shaders" "$<TARGET_FILE_DIR:3sx>/assets/shaders/libretro"
+                COMMAND ${CMAKE_COMMAND} -E create_symlink "${THIRD_PARTY_DIR}/slang-shaders" "${_3SX_DATA_DIR}/assets/shaders/libretro"
                 COMMAND ${CMAKE_COMMAND} -E copy_directory
                     "${CMAKE_SOURCE_DIR}/assets/shaders/custom" "${THIRD_PARTY_DIR}/slang-shaders/custom"
                 COMMENT "Symlinking libretro shaders + copying custom presets"
@@ -917,21 +924,21 @@ endif()
 if(ENABLE_TRAINING)
     add_custom_command(TARGET 3sx POST_BUILD
         # Lua scripts for trials/training
-        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:3sx>/lua
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${_3SX_DATA_DIR}/lua
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/assets/lua/sf3_3rd_trial_lua/sf3_3rd_trial_clean.lua $<TARGET_FILE_DIR:3sx>/lua/sf3_3rd_trial_clean.lua
+        ${CMAKE_SOURCE_DIR}/assets/lua/sf3_3rd_trial_lua/sf3_3rd_trial_clean.lua ${_3SX_DATA_DIR}/lua/sf3_3rd_trial_clean.lua
         # Lua compat modules (FBNeo API shim)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets/lua/compat $<TARGET_FILE_DIR:3sx>/lua/compat
+        ${CMAKE_SOURCE_DIR}/assets/lua/compat ${_3SX_DATA_DIR}/lua/compat
         # Training mode bootstrap
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/assets/lua/training_main.lua $<TARGET_FILE_DIR:3sx>/lua/training_main.lua
+        ${CMAKE_SOURCE_DIR}/assets/lua/training_main.lua ${_3SX_DATA_DIR}/lua/training_main.lua
         # Effie's training Lua modules (data, tools, prediction)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets/lua/3rd_training_lua-main/src $<TARGET_FILE_DIR:3sx>/lua/src
+        ${CMAKE_SOURCE_DIR}/assets/lua/3rd_training_lua-main/src ${_3SX_DATA_DIR}/lua/src
         # Effie's framedata JSONs
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets/lua/3rd_training_lua-main/data $<TARGET_FILE_DIR:3sx>/lua/data
+        ${CMAKE_SOURCE_DIR}/assets/lua/3rd_training_lua-main/data ${_3SX_DATA_DIR}/lua/data
     )
 endif()
 

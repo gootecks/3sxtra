@@ -19,6 +19,9 @@
  * Batocera (which has no package manager).
  */
 #include "port/sdl/lag_test.h"
+
+#ifdef ENABLE_GPIO_LAG_TEST
+
 #include "game_state.h"
 #include "sf33rd/Source/Game/io/input_converter.h"
 #include "sf33rd/Source/Game/engine/state_user.h"
@@ -291,3 +294,5 @@ GpioLagTestState GpioLagTest_GetState(void) {
     }
     return state;
 }
+
+#endif /* ENABLE_GPIO_LAG_TEST */

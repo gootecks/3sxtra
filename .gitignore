@@ -116,3 +116,7 @@ tmp/
 configs/
 plugins/
 *.csv
+# macOS per-arch build dirs
+build_arm64/
+build_intel/
+build_universal/

@@ -8,7 +8,7 @@
 
 
 > [!NOTE]
-> Experimental, unofficial fork. **macOS (Apple Silicon + Intel) is the supported release target of this fork**: download `3SXtra-*-macos-universal.dmg` from the [`macos-rolling` release](https://github.com/gootecks/3sxtra/releases/tag/macos-rolling) (launcher and engine in one app; see [docs/macos.md](docs/macos.md)). Other platforms build from source but are not released here.
+> Experimental, unofficial fork. **macOS (Apple Silicon + Intel) is the supported release target of this fork**: download `3SX-<sha>-macos-universal.dmg` (the engine) from the [`macos-rolling` release](https://github.com/gootecks/3sxtra/releases/tag/macos-rolling); the launcher is released separately from [gootecks/3sx-launcher](https://github.com/gootecks/3sx-launcher). Other platforms build from source but are not released here.
 
 Binary: `3sx` (`3sx.exe` on Windows).
 

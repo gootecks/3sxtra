@@ -64,6 +64,8 @@ prompt.md
 
 # === Secrets ===
 tools/lobby-server/.env
+fnox.local.toml
+mise.local.toml
 
 /stages
 *.csv

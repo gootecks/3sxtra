@@ -1,0 +1,12 @@
+# Commit only provider configuration and 1Password references; never plaintext secrets.
+default_provider = "onepass"
+
+[providers.onepass]
+type = "1password"
+vault = "Developer"
+
+[providers.plain]
+type = "plain"
+
+[secrets]
+LLMGATEWAY_API_KEY = { provider = "onepass", value = "op://Developer/LLMGateway/communique invoicegen" }

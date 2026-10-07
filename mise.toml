@@ -1,0 +1,79 @@
+[tools]
+communique = "1.5.0"
+fnox = "1.28.0"
+op = "2.34.0"
+
+[tasks."release:notes"]
+description = "Preview release notes without publishing or writing files"
+usage = '''
+arg "[tag]" default="HEAD" help="Target ref (typically a macos-v* tag)"
+arg "[previous]" help="Previous ref"
+'''
+run = """
+tag="${usage_tag:-HEAD}"
+previous="${usage_previous:-}"
+set -- "$tag"
+if [ -n "$previous" ]; then set -- "$@" "$previous"; fi
+fnox -c fnox.toml exec -- bash -c 'export OPENAI_API_KEY="${LLMGATEWAY_API_KEY:?missing gateway token}"; exec communique "$@"' -- generate "$@" --dry-run --tag-pattern "macos-v*"
+"""
+
+[tasks."release:publish"]
+description = "Update notes on an existing GitHub release for a real macos-v* tag"
+usage = '''
+arg "<tag>" help="Existing release tag (macos-v*)"
+arg "[previous]" help="Previous ref"
+'''
+run = """
+set -eu
+tag="${usage_tag:?missing release tag}"
+previous="${usage_previous:-}"
+case "$tag" in macos-v*) ;; *) printf '%s\\n' "Expected a macos-v* release tag: $tag" >&2; exit 1 ;; esac
+if ! git show-ref --verify --quiet "refs/tags/$tag"; then
+  printf '%s\\n' "A real local release tag is required: $tag" >&2
+  exit 1
+fi
+set -- "$tag"
+if [ -n "$previous" ]; then set -- "$@" "$previous"; fi
+fnox -c fnox.toml exec -- bash -c '
+set -eu
+export OPENAI_API_KEY="${LLMGATEWAY_API_KEY:?missing gateway token}"
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  GITHUB_TOKEN="$(gh auth token --hostname github.com)"
+fi
+if [ -z "$GITHUB_TOKEN" ]; then
+  printf "%s\\n" "GitHub authentication returned an empty token." >&2
+  exit 1
+fi
+export GITHUB_TOKEN
+GH_TOKEN="$GITHUB_TOKEN" gh release view "$2" --repo gootecks/3sxtra > /dev/null
+exec communique "$@"
+' -- generate "$@" --github-release --tag-pattern "macos-v*"
+"""
+
+[tasks."changelog:preview"]
+description = "Preview concise changelog changes without writing or publishing"
+usage = '''
+arg "[tag]" default="HEAD" help="Target ref"
+arg "[previous]" help="Previous ref"
+'''
+run = """
+tag="${usage_tag:-HEAD}"
+previous="${usage_previous:-}"
+set -- "$tag"
+if [ -n "$previous" ]; then set -- "$@" "$previous"; fi
+fnox -c fnox.toml exec -- bash -c 'export OPENAI_API_KEY="${LLMGATEWAY_API_KEY:?missing gateway token}"; exec communique "$@"' -- generate "$@" --dry-run --changelog --concise --tag-pattern "macos-v*"
+"""
+
+[tasks."changelog:update"]
+description = "Write concise changelog changes locally without publishing"
+usage = '''
+arg "[tag]" default="HEAD" help="Target ref"
+arg "[previous]" help="Previous ref"
+'''
+run = """
+tag="${usage_tag:-HEAD}"
+previous="${usage_previous:-}"
+set -- "$tag"
+if [ -n "$previous" ]; then set -- "$@" "$previous"; fi
+fnox -c fnox.toml exec -- bash -c 'export OPENAI_API_KEY="${LLMGATEWAY_API_KEY:?missing gateway token}"; exec communique "$@"' -- generate "$@" --changelog --concise --tag-pattern "macos-v*"
+"""

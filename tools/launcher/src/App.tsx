@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Remapper } from "./components/Remapper";
+import { RomPanel, type RomStatus } from "./components/RomPanel";
 import "./App.css";
 
 
@@ -65,6 +66,17 @@ const SETTING_CATEGORIES: SettingCategory[] = [
       { key: "bezel-enabled", label: "Bezel", type: "bool" },
       { key: "shader-path", label: "Shader Path", type: "string" },
       { key: "draw-players-above-hud", label: "Players Above HUD", type: "bool" },
+      { key: "renderer", label: "Renderer", type: "select", options: [
+        { label: "OpenGL", value: "gl" },
+        { label: "SDL GPU", value: "gpu" },
+        { label: "SDL Renderer", value: "sdl" },
+        { label: "Classic", value: "classic" }
+      ]},
+      { key: "gpu-driver", label: "GPU Driver", type: "select", options: [
+        { label: "Auto", value: "auto" },
+        { label: "Metal", value: "metal" },
+        { label: "Vulkan", value: "vulkan" }
+      ]},
     ]
   },
   {
@@ -117,6 +129,7 @@ function App() {
   const [isGameInstalled, setIsGameInstalled] = useState(true);
   const [buildDate, setBuildDate] = useState("UNKNOWN");
   const [launcherDate, setLauncherDate] = useState("UNKNOWN");
+  const [romStatus, setRomStatus] = useState<RomStatus | null>(null);
 
   const performUpdate = async () => {
     setStatus("CHECKING FOR UPDATES...");
@@ -165,6 +178,13 @@ function App() {
       }
     } catch {}
 
+    // ROM status: the engine can't start without SF33RD.AFS
+    try {
+      const rom = await invoke<RomStatus>("get_rom_status");
+      setRomStatus(rom);
+      if (!rom.installed && nowInstalled) setStatus("ROM MISSING — IMPORT SF33RD.AFS");
+    } catch {}
+
     setIsUpdating(false);
     setProgress(100);
   };
@@ -211,7 +231,7 @@ function App() {
       // Fetch live news feeds
       try {
         const fetchNews = async () => {
-          const res = await fetch("https://api.github.com/repos/3sxtra/3sxtra/commits?per_page=3");
+          const res = await fetch("https://api.github.com/repos/gootecks/3sxtra/commits?per_page=3");
           if (res.ok) {
             const commits = await res.json();
             const bgImages = [
@@ -276,6 +296,10 @@ function App() {
       } catch {}
 
       setIsGameInstalled(installed);
+      try {
+        setRomStatus(await invoke<RomStatus>("get_rom_status"));
+      } catch {}
+
 
       if (!installed) {
         setStatus("FIRST RUN - DOWNLOAD REQUIRED");
@@ -543,6 +567,9 @@ function App() {
         <h2 className="page-title">{activeTab.replace('_', ' ')}</h2>
 
         <section className="content-panel">
+          {romStatus && !romStatus.installed && (
+            <RomPanel onImported={(rom, summary) => { setRomStatus(rom); setStatus(summary); }} />
+          )}
           {/* ── News ───────────────────────────────── */}
           {activeTab === "news" && (
             <div className="news-feed">

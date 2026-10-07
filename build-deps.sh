@@ -10,9 +10,47 @@ mkdir -p "$THIRD_PARTY"
 OS="$(uname -s)"
 echo "Detected OS: $OS"
 
-# Optional: set to "universal" for macOS fat binaries (arm64+x86_64)
+# macOS target architecture for every native dependency:
+#   (empty)   host architecture only (default; fastest for local development)
+#   universal arm64 + x86_64 fat binaries (used by CI and tools/macos/package-engine.sh)
+#   arm64 | x86_64  a single explicit architecture
+# Ignored on non-macOS hosts.
 TARGET_ARCH="${TARGET_ARCH:-}"
 MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"
+
+# CMake arguments shared by every macOS dependency build.
+OSX_CMAKE_ARGS=""
+if [ "$OS" = "Darwin" ]; then
+    export MACOSX_DEPLOYMENT_TARGET  # also honoured by plain clang/make builds (not passed to cargo)
+    OSX_CMAKE_ARGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
+    case "$TARGET_ARCH" in
+        "") ;;
+        universal) OSX_CMAKE_ARGS="$OSX_CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" ;;
+        arm64|x86_64) OSX_CMAKE_ARGS="$OSX_CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES=$TARGET_ARCH" ;;
+        *) echo "ERROR: unsupported TARGET_ARCH '$TARGET_ARCH' (expected universal, arm64 or x86_64)" >&2; exit 1 ;;
+    esac
+    echo "macOS deps: TARGET_ARCH='${TARGET_ARCH:-host}' deployment target $MACOSX_DEPLOYMENT_TARGET"
+fi
+
+# Architectures every macOS binary must contain.
+mac_want_archs() {
+    case "$TARGET_ARCH" in
+        universal) echo "arm64 x86_64" ;;
+        "") uname -m ;;
+        *) echo "$TARGET_ARCH" ;;
+    esac
+}
+
+# mac_stale <file>: true when <file> exists on macOS but lacks a requested architecture,
+# so cached third_party builds are rebuilt when TARGET_ARCH changes.
+mac_stale() {
+    [ "$OS" = "Darwin" ] && [ -f "$1" ] || return 1
+    local have=" $(lipo -archs "$1" 2>/dev/null) " a
+    for a in $(mac_want_archs); do
+        case "$have" in *" $a "*) ;; *) echo "Stale architecture in $1 (has:$have want: $(mac_want_archs)) — rebuilding"; return 0 ;; esac
+    done
+    return 1
+}
 
 echo "Using cmake from: $(which cmake)"
 cmake --version
@@ -42,6 +80,8 @@ SDL_DIR="$THIRD_PARTY/sdl3"
 SDL_SRC="$SDL_DIR/SDL"
 SDL_BUILD="$SDL_DIR/build"
 
+if mac_stale "$SDL_BUILD/lib/libSDL3.0.dylib"; then rm -rf "$SDL_BUILD"; fi
+
 if [ "${SKIP_SDL3_BUILD:-}" = "1" ]; then
     echo "SKIP_SDL3_BUILD=1 — skipping SDL3 (pre-installed)"
 elif [ -d "$SDL_BUILD" ]; then
@@ -63,13 +103,7 @@ else
 
     case "$OS" in
         Darwin|Linux)
-            CMAKE_EXTRA_ARGS=""
-            if [ "$OS" = "Darwin" ]; then
-                CMAKE_EXTRA_ARGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
-                if [ "$TARGET_ARCH" = "universal" ]; then
-                    CMAKE_EXTRA_ARGS="$CMAKE_EXTRA_ARGS -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
-                fi
-            fi
+            CMAKE_EXTRA_ARGS="$OSX_CMAKE_ARGS"
             cmake .. \
                 ${CC:+-DCMAKE_C_COMPILER=$CC} \
                 ${CXX:+-DCMAKE_CXX_COMPILER=$CXX} \
@@ -214,18 +248,46 @@ if grep -q 'staging.as_mut_slice()?.copy_from_slice' "$LUTS_RS" 2>/dev/null; the
     sed 's|staging.as_mut_slice()?.copy_from_slice(\&image.bytes);|let staging_slice = staging.as_mut_slice()?;\n        staging_slice[..image.bytes.len()].copy_from_slice(\&image.bytes);|' "$LUTS_RS" > "$LUTS_RS.tmp" && mv "$LUTS_RS.tmp" "$LUTS_RS"
 fi
 
-# Build librashader-capi (requires Rust/cargo)
+# Build librashader-capi (requires Rust/cargo).
+# CMake links target/release/liblibrashader_capi.a. On macOS each requested architecture is
+# built with an explicit --target and the results are lipo'd into that path.
+LIBRASHADER_LIB="$LIBRASHADER_DIR/target/release/liblibrashader_capi.a"
+LIBRASHADER_CARGO_ARGS="--release -p librashader-capi --no-default-features --features runtime-opengl,runtime-vulkan,stable"
+if mac_stale "$LIBRASHADER_LIB"; then rm -f "$LIBRASHADER_LIB"; fi
+
 if ! command -v cargo &> /dev/null; then
     echo "WARNING: cargo (Rust) not found — skipping librashader build."
     echo "         librashader is required for shader support. Install Rust to enable it."
-elif [ -f "$LIBRASHADER_DIR/target/release/liblibrashader_capi.a" ]; then
+elif [ -f "$LIBRASHADER_LIB" ]; then
     echo "librashader-capi already built."
+elif [ "$OS" = "Darwin" ]; then
+    echo "Building librashader-capi for: $(mac_want_archs)..."
+    cd "$LIBRASHADER_DIR"
+    LIBRASHADER_SLICES=""
+    for arch in $(mac_want_archs); do
+        case "$arch" in
+            arm64) triple=aarch64-apple-darwin ;;
+            x86_64) triple=x86_64-apple-darwin ;;
+        esac
+        # Run inside the repo so rustup targets the toolchain librashader pins (if any).
+        if command -v rustup &> /dev/null; then rustup target add "$triple"; fi
+        # MACOSX_DEPLOYMENT_TARGET is deliberately not passed to cargo: rustc applies it to host
+        # proc-macro dylibs too, and with Xcode 27's ld those fail to dlopen ("mis-aligned
+        # LINKEDIT string pool"). The static slices keep rustc's default minimum (<= 13.0),
+        # which links cleanly into the 13.0 executable.
+        env -u MACOSX_DEPLOYMENT_TARGET cargo build $LIBRASHADER_CARGO_ARGS --target "$triple"
+        LIBRASHADER_SLICES="$LIBRASHADER_SLICES target/$triple/release/liblibrashader_capi.a"
+    done
+    mkdir -p target/release
+    lipo -create $LIBRASHADER_SLICES -output "$LIBRASHADER_LIB"
+    echo "librashader-capi built ($(lipo -archs "$LIBRASHADER_LIB"))."
+    cd "$ROOT_DIR"
 else
     echo "Building librashader-capi..."
     cd "$LIBRASHADER_DIR"
-    cargo build --release -p librashader-capi --no-default-features --features runtime-opengl,runtime-vulkan,stable
+    cargo build $LIBRASHADER_CARGO_ARGS
     echo "librashader-capi built."
-    cd ../.. 
+    cd "$ROOT_DIR"
 fi
 
 # -----------------------------
@@ -251,6 +313,8 @@ fi
 SDL_NET_DIR="$THIRD_PARTY/sdl3_net"
 SDL_NET_BUILD="$SDL_NET_DIR/build"
 
+if mac_stale "$SDL_NET_BUILD/lib/libSDL3_net.0.dylib"; then rm -rf "$SDL_NET_BUILD" "$SDL_NET_DIR/SDL_net/build"; fi
+
 if [ "${SKIP_SDL3_BUILD:-}" = "1" ]; then
     echo "SKIP_SDL3_BUILD=1 — skipping SDL3_net (pre-installed)"
 elif [ -d "$SDL_NET_BUILD" ]; then
@@ -274,13 +338,7 @@ else
 
     case "$OS" in
         Darwin|Linux)
-            CMAKE_EXTRA_ARGS=""
-            if [ "$OS" = "Darwin" ]; then
-                CMAKE_EXTRA_ARGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
-                if [ "$TARGET_ARCH" = "universal" ]; then
-                    CMAKE_EXTRA_ARGS="$CMAKE_EXTRA_ARGS -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
-                fi
-            fi
+            CMAKE_EXTRA_ARGS="$OSX_CMAKE_ARGS"
             cmake .. \
                 ${CC:+-DCMAKE_C_COMPILER=$CC} \
                 ${CXX:+-DCMAKE_CXX_COMPILER=$CXX} \
@@ -316,6 +374,8 @@ fi
 
 SDL_MIXER_DIR="$THIRD_PARTY/sdl3_mixer"
 SDL_MIXER_BUILD="$SDL_MIXER_DIR/build"
+
+if mac_stale "$SDL_MIXER_BUILD/lib/libSDL3_mixer.0.dylib"; then rm -rf "$SDL_MIXER_BUILD" "$SDL_MIXER_DIR/SDL_mixer/build"; fi
 
 if [ "${SKIP_SDL3_BUILD:-}" = "1" ]; then
     echo "SKIP_SDL3_BUILD=1 — skipping SDL3_mixer (pre-installed)"
@@ -354,13 +414,7 @@ else
 
     case "$OS" in
         Darwin|Linux)
-            CMAKE_EXTRA_ARGS=""
-            if [ "$OS" = "Darwin" ]; then
-                CMAKE_EXTRA_ARGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
-                if [ "$TARGET_ARCH" = "universal" ]; then
-                    CMAKE_EXTRA_ARGS="$CMAKE_EXTRA_ARGS -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
-                fi
-            fi
+            CMAKE_EXTRA_ARGS="$OSX_CMAKE_ARGS"
             cmake .. \
                 ${CC:+-DCMAKE_C_COMPILER=$CC} \
                 ${CXX:+-DCMAKE_CXX_COMPILER=$CXX} \
@@ -401,6 +455,8 @@ fi
 SDL_IMAGE_DIR="$THIRD_PARTY/sdl3_image"
 SDL_IMAGE_BUILD="$SDL_IMAGE_DIR/build"
 
+if mac_stale "$SDL_IMAGE_BUILD/lib/libSDL3_image.0.dylib"; then rm -rf "$SDL_IMAGE_BUILD" "$SDL_IMAGE_DIR/SDL_image/build"; fi
+
 if [ "${SKIP_SDL3_BUILD:-}" = "1" ]; then
     echo "SKIP_SDL3_BUILD=1 — skipping SDL3_image (pre-installed)"
 elif [ -d "$SDL_IMAGE_BUILD" ]; then
@@ -424,13 +480,7 @@ else
 
     case "$OS" in
         Darwin|Linux)
-            CMAKE_EXTRA_ARGS=""
-            if [ "$OS" = "Darwin" ]; then
-                CMAKE_EXTRA_ARGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
-                if [ "$TARGET_ARCH" = "universal" ]; then
-                    CMAKE_EXTRA_ARGS="$CMAKE_EXTRA_ARGS -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
-                fi
-            fi
+            CMAKE_EXTRA_ARGS="$OSX_CMAKE_ARGS"
             cmake .. \
                 ${CC:+-DCMAKE_C_COMPILER=$CC} \
                 ${CXX:+-DCMAKE_CXX_COMPILER=$CXX} \
@@ -466,6 +516,8 @@ fi
 FREETYPE_DIR="$THIRD_PARTY/freetype"
 FREETYPE_BUILD="$FREETYPE_DIR/build"
 
+if mac_stale "$FREETYPE_BUILD/lib/libfreetype.a"; then rm -rf "$FREETYPE_BUILD"; fi
+
 if [ -d "$FREETYPE_BUILD" ]; then
     echo "FreeType already built at $FREETYPE_BUILD"
 else
@@ -480,10 +532,8 @@ else
     CMAKE_EXTRA_ARGS=""
     case "$OS" in
         Darwin)
-            CMAKE_EXTRA_ARGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
-            if [ "$TARGET_ARCH" = "universal" ]; then
-                CMAKE_EXTRA_ARGS="$CMAKE_EXTRA_ARGS -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
-            fi
+            # Escape ';' (CMAKE_OSX_ARCHITECTURES list) so the eval below keeps it literal.
+            CMAKE_EXTRA_ARGS="${OSX_CMAKE_ARGS//;/\\;}"
             ;;
         MINGW*|MSYS*|CYGWIN*)
             CMAKE_EXTRA_ARGS="-G \"MSYS Makefiles\""
@@ -617,6 +667,8 @@ MINIZIP_NG_TAG="4.1.0"
 MINIZIP_NG_DIR="$THIRD_PARTY/minizip-ng"
 MINIZIP_NG_BUILD="$MINIZIP_NG_DIR/build"
 
+if mac_stale "$MINIZIP_NG_BUILD/lib/libminizip-ng.a"; then rm -rf "$MINIZIP_NG_BUILD"; fi
+
 if find "$MINIZIP_NG_BUILD" -name "libminizip-ng.a" | read -r _; then
     echo "minizip-ng already built at $MINIZIP_NG_BUILD"
 else
@@ -647,7 +699,8 @@ else
         -DMZ_WZAES=OFF \
         -DMZ_OPENSSL=OFF \
         -DMZ_LIBBSD=OFF \
-        -DMZ_DECOMPRESS_ONLY=ON
+        -DMZ_DECOMPRESS_ONLY=ON \
+        $OSX_CMAKE_ARGS
 
     cmake --build "$MINIZIP_NG_SRC/cmake-build" -j$(nproc)
     cmake --install "$MINIZIP_NG_SRC/cmake-build"
@@ -664,6 +717,8 @@ TF_PSA_CRYPTO_VERSION="1.0.0"
 TF_PSA_CRYPTO_URL="https://github.com/Mbed-TLS/TF-PSA-Crypto/releases/download/tf-psa-crypto-$TF_PSA_CRYPTO_VERSION/tf-psa-crypto-$TF_PSA_CRYPTO_VERSION.tar.bz2"
 TF_PSA_CRYPTO_DIR="$THIRD_PARTY/tf-psa-crypto"
 TF_PSA_CRYPTO_BUILD="$TF_PSA_CRYPTO_DIR/build"
+
+if mac_stale "$TF_PSA_CRYPTO_BUILD/lib/libtfpsacrypto.a"; then rm -rf "$TF_PSA_CRYPTO_BUILD"; fi
 
 if find "$TF_PSA_CRYPTO_BUILD" -name "libtfpsacrypto.a" | read -r _; then
     echo "tf-psa-crypto already built at $TF_PSA_CRYPTO_BUILD"
@@ -687,13 +742,48 @@ else
         -DENABLE_TESTING=OFF \
         -DUSE_SHARED_TF_PSA_CRYPTO_LIBRARY=OFF \
         -DUSE_STATIC_TF_PSA_CRYPTO_LIBRARY=ON \
-        -DTF_PSA_CRYPTO_CONFIG_FILE="$ROOT_DIR/configs/crypto-config-ccm-aes-sha256.h"
+        -DTF_PSA_CRYPTO_CONFIG_FILE="$ROOT_DIR/configs/crypto-config-ccm-aes-sha256.h" \
+        $OSX_CMAKE_ARGS
 
     cmake --build "$TF_PSA_CRYPTO_SRC/cmake-build" -j$(nproc)
     cmake --install "$TF_PSA_CRYPTO_SRC/cmake-build"
 
     rm -rf "$TF_PSA_CRYPTO_SRC"
     echo "tf-psa-crypto installed to $TF_PSA_CRYPTO_BUILD"
+fi
+
+# -----------------------------
+# miniupnpc (macOS: static, pinned, built for TARGET_ARCH so the app needs no Homebrew)
+# -----------------------------
+
+if [ "$OS" = "Darwin" ]; then
+    MINIUPNPC_TAG="miniupnpc_2_3_3"
+    MINIUPNPC_BUILD="$THIRD_PARTY/miniupnpc/build"
+
+    if mac_stale "$MINIUPNPC_BUILD/lib/libminiupnpc.a"; then rm -rf "$MINIUPNPC_BUILD"; fi
+
+    if [ -f "$MINIUPNPC_BUILD/lib/libminiupnpc.a" ]; then
+        echo "miniupnpc already built at $MINIUPNPC_BUILD"
+    else
+        echo "Building miniupnpc $MINIUPNPC_TAG @ $MINIUPNPC_BUILD..."
+        MINIUPNPC_SRC=$(mktemp -d)
+        git clone --depth 1 --branch "$MINIUPNPC_TAG" https://github.com/miniupnp/miniupnp.git "$MINIUPNPC_SRC"
+        cmake -S "$MINIUPNPC_SRC/miniupnpc" -B "$MINIUPNPC_SRC/cmake-build" \
+            -G Ninja \
+            ${CC:+-DCMAKE_C_COMPILER=$CC} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$MINIUPNPC_BUILD" \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DUPNPC_BUILD_STATIC=ON \
+            -DUPNPC_BUILD_SHARED=OFF \
+            -DUPNPC_BUILD_TESTS=OFF \
+            -DUPNPC_BUILD_SAMPLE=OFF \
+            $OSX_CMAKE_ARGS
+        cmake --build "$MINIUPNPC_SRC/cmake-build" -j$(nproc)
+        cmake --install "$MINIUPNPC_SRC/cmake-build"
+        rm -rf "$MINIUPNPC_SRC"
+        echo "miniupnpc installed to $MINIUPNPC_BUILD"
+    fi
 fi
 
 echo "All dependencies installed successfully in $THIRD_PARTY"

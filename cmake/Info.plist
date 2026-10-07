@@ -2,20 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key> 
+    <key>CFBundleName</key>
     <string>3sx</string>
-    <key>CFBundleExecutable</key> 
+    <key>CFBundleExecutable</key>
     <string>3sx</string>
-    <key>CFBundleIdentifier</key> 
+    <key>CFBundleIdentifier</key>
     <string>com.crowded-street.3sx</string>
-    <key>CFBundleVersion</key> 
-    <string>1.0</string>
-    <key>CFBundlePackageType</key> 
+    <key>CFBundleShortVersionString</key>
+    <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+    <key>CFBundleVersion</key>
+    <string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+    <key>CFBundlePackageType</key>
     <string>APPL</string>
-    <key>CFBundleSignature</key> 
+    <key>CFBundleSignature</key>
     <string>????</string>
-    <key>LSMinimumSystemVersion</key> 
-    <string>11.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.games</string>
 </dict>

@@ -102,6 +102,7 @@ android/third_party/
 /third_party_android
 /scratch
 /build-sw
+/build-macos-*/
 
 # === Graphify Graph exclusions ===
 android/

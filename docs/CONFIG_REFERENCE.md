@@ -32,15 +32,18 @@ Source: [config.c](file:///d:/3sxtra/src/port/config/config.c) · [config.h](fil
 Parser: flat `key = value`, `#` comments, auto-typed as bool/int/string.  
 Delete the file to regenerate with defaults.
 
+> **Default column**: `—` means session-only (no persisted default; value exists only while the engine is running or after being explicitly set). All other defaults are baked into the engine and appear when the config file is first created.
+
 ### Window
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `fullscreen` | bool | `true` | Start in fullscreen mode |
+| `fullscreen-exclusive` | bool | `false` | Use exclusive (hardware) fullscreen mode |
 | `fullscreen-width` | int | `0` | Fullscreen width (`0` = desktop resolution) |
 | `fullscreen-height` | int | `0` | Fullscreen height (`0` = desktop resolution) |
-| `window-width` | int | `640` | Windowed mode width (pixels) |
-| `window-height` | int | `480` | Windowed mode height (pixels) |
+| `window-width` | int | `1920` | Windowed mode width (pixels) |
+| `window-height` | int | `1080` | Windowed mode height (pixels) |
 | `window-x` | int | — | Window X position (saved at exit) |
 | `window-y` | int | — | Window Y position (saved at exit) |
 
@@ -48,14 +51,16 @@ Delete the file to regenerate with defaults.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `renderer` | string | `gl` | Backend: `gl`, `gpu` (SDL_GPU), `sdl`, `classic`; `--renderer` overrides |
+| `renderer` | string | `gl` | Backend: `auto`, `gl`, `gpu` (SDL_GPU), `sdl`, `classic`; `--renderer` overrides |
 | `gpu-driver` | string | `auto` | SDL_GPU driver: `auto`, `metal`, `vulkan`, `d3d12`; `--gpu-driver` overrides. See [render-drivers.md](render-drivers.md) |
 | `scale-mode` | string | `nearest` | Upscale filter: `nearest` or `soft-linear` |
+| `scale-stretch` | bool | `false` | Stretch image to fill window (disables aspect-ratio correction) |
 | `draw-rect-borders` | bool | `false` | Draw debug borders around rects |
 | `dump-textures` | bool | `false` | Dump textures to disk (debug) |
-| `shader-mode-libretro` | bool | `false` | Use libretro `.slangp` shader pipeline |
+| `shader-mode-libretro` | bool | — | Use libretro `.slangp` shader pipeline (session-only) |
 | `shader-path` | string | `""` | Path to `.slangp` shader preset (relative to `shaders/`) |
-| `bezel-enabled` | bool | `false` | Show CRT bezel overlay |
+| `draw-players-above-hud` | bool | — | Draw player sprites above HUD layer (session-only) |
+| `bezel-enabled` | bool | — | Show CRT bezel overlay (session-only) |
 
 ### Broadcast
 
@@ -129,6 +134,7 @@ Delete the file to regenerate with defaults.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| `arcade-balance` | bool | — | Enable arcade balance adjustments (session-only) |
 | `modded-bgm-enabled` | bool | `false` | Enable custom BGM from `assets/bgm_mod/` |
 | `modded-voice-enabled` | bool | `false` | Enable custom voice packs |
 

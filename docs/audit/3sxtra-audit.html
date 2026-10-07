@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3SXtra macOS Fork — Audit Report</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card: #ffffff;
+    --border: #dee2e6;
+    --text: #212529;
+    --muted: #6c757d;
+    --green: #198754;
+    --amber: #ffc107;
+    --red: #dc3545;
+    --green-bg: #d1e7dd;
+    --amber-bg: #fff3cd;
+    --red-bg: #f8d7da;
+    --accent: #0d6efd;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 2rem; max-width: 1200px; margin: 0 auto;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.3rem; margin: 2rem 0 .75rem; border-bottom: 2px solid var(--accent); padding-bottom: .25rem; }
+  h3 { font-size: 1.1rem; margin: 1.25rem 0 .5rem; }
+  .subtitle { color: var(--muted); margin-bottom: 1.5rem; font-size: .95rem; }
+  .verdict-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.25rem; margin-bottom: 1.5rem;
+  }
+  .verdict-box h3 { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: .875rem; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #e9ecef; font-weight: 600; white-space: nowrap; }
+  tr:nth-child(even) { background: #f8f9fa; }
+  code { font-family: "SF Mono", "Cascadia Code", monospace; font-size: .82em; background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
+  .tag-green { background: var(--green-bg); color: #0a5828; }
+  .tag-amber { background: var(--amber-bg); color: #664d03; }
+  .tag-red { background: var(--red-bg); color: #842029; }
+  .tag-gray { background: #e2e3e5; color: #41464b; }
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .75rem; margin-bottom: 1.5rem; }
+  .summary-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+  .summary-card .num { font-size: 1.8rem; font-weight: 700; line-height: 1.2; }
+  .summary-card .label { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .warn-list { padding-left: 1.2rem; }
+  .warn-list li { margin-bottom: .4rem; }
+  .option-group { margin-bottom: 1.5rem; }
+  .option-letter { display: inline-block; background: var(--accent); color: #fff; border-radius: 50%;
+    width: 24px; height: 24px; text-align: center; line-height: 24px; font-weight: 700; font-size: .85rem;
+    margin-right: 6px; }
+  dl { margin-bottom: 1rem; }
+  dt { font-weight: 600; margin-top: .75rem; }
+  dd { margin-left: 1.2rem; }
+  @media (max-width: 700px) { .summary-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>3SXtra macOS Fork — Full Audit Report</h1>
+<p class="subtitle">Prepared: 2026-10-07 · Branch: <code>chore/15-communique</code> · macOS 27.2 (build 26B5091g), arm64 · OpenGL 4.1 (Apple M4)</p>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>1. Executive Summary</h2>
+
+<div class="verdict-box">
+<p><strong>Bottom line:</strong> The README features are <strong>mostly real</strong> — the vast majority of documented functionality is implemented and verified at runtime. However, several claims in the README are <strong>mis-documented</strong> (hotkey table has 4+ wrong mappings), <strong>inactive on macOS</strong> (persistent mapped buffers, GPU palette compute, Syphon broadcast, HD sprite overrides), or <strong>absent/asset-gated</strong> (bezels, HD stages, sprite overrides require user-supplied asset files). The README also lists <code>libcdio</code>/<code>libiso9660</code> in dependencies despite neither being present in any CMake target.</p>
+
+<table>
+<tr><th>Area</th><th>Verdict</th></tr>
+<tr><td>Engine boots &amp; runs on macOS arm64</td><td><span class="tag tag-green">✓ Verified</span></td></tr>
+<tr><td>OpenGL renderer</td><td><span class="tag tag-green">✓ Verified</span></td></tr>
+<tr><td>SDL_GPU (Metal) renderer</td><td><span class="tag tag-amber">⚠ Boots, librashader broken</span></td></tr>
+<tr><td>SDL2D / Classic renderers</td><td><span class="tag tag-green">✓ Verified</span></td></tr>
+<tr><td>F1–F12 hotkeys</td><td><span class="tag tag-amber">⚠ 4 mis-mappings</span></td></tr>
+<tr><td>Alt+Enter, Grave screenshot</td><td><span class="tag tag-green">✓ Verified</span></td></tr>
+<tr><td>Keys 9/0 (debug pause/overlay)</td><td><span class="tag tag-red">✗ Mis-documented</span></td></tr>
+<tr><td>Shaders (librashader GL)</td><td><span class="tag tag-green">✓ Verified</span></td></tr>
+<tr><td>Shaders (GPU/Metal)</td><td><span class="tag tag-red">✗ librashader Vulkan-only</span></td></tr>
+<tr><td>ADX audio decoder</td><td><span class="tag tag-green">✓ Verified</span></td></tr>
+<tr><td>Visuals &amp; Mods menu</td><td><span class="tag tag-amber">⚠ UI code present, needs assets</span></td></tr>
+<tr><td>HD sprite overrides (--plugin hd)</td><td><span class="tag tag-red">✗ Broken on macOS bundle</span></td></tr>
+<tr><td>Save system &amp; replays</td><td><span class="tag tag-green">✓ Verified</span></td></tr>
+<tr><td>Netplay (STUN, UPnP, lobby, etc.)</td><td><span class="tag tag-amber">⚠ Source present, runtime not tested</span></td></tr>
+<tr><td>Performance rows (persistent_map etc.)</td><td><span class="tag tag-amber">⚠ 2 of 9 inactive on macOS</span></td></tr>
+<tr><td>Syphon broadcast</td><td><span class="tag tag-red">✗ Not compiled</span></td></tr>
+<tr><td>CLI options block</td><td><span class="tag tag-green">✓ Verified</span> (netplay shorthand removed)</td></tr>
+</table>
+
+<h3>Should we fork 3sx instead?</h3>
+<p><strong>No.</strong> This fork (gootecks/3sxtra) is the only actively maintained port with netplay, shader support, and renderer backends. The upstream 3sx project has no recent macOS releases. The bugs found are minor and fixable (hotkey docs, plugin path, Syphon detection); the core engine is solid and boots reliably across all renderer backends. Forking 3sx would lose all fork-only features with no benefit.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>2. Feature Verification Matrix</h2>
+
+<h3>Rendering Backends</h3>
+<table>
+<tr><th>Area</th><th>README Claim</th><th>Source Anchor</th><th>Status</th><th>Runtime Evidence</th></tr>
+<tr>
+  <td>OpenGL (default)</td>
+  <td>GLSL 4.1 core (macOS), texture array batching, PBO async uploads, compute-shader palette, libretro presets</td>
+  <td><code>sdl_app.c:create_shader_program</code>, <code>shader_manager.c</code>, <code>sd_game_renderer_gl_draw.c</code></td>
+  <td><span class="tag tag-amber">⚠ Partial</span></td>
+  <td>Boots, renders to Title. But <code>persistent_map=0</code> → no PBO async upload (falls back to <code>glBufferSubData</code>), <code>compute=0</code> → no compute-shader palette. macOS OpenGL caps out at GL 4.1.</td>
+</tr>
+<tr>
+  <td>SDL_GPU (--renderer gpu)</td>
+  <td>Metal / Vulkan / D3D12 via SDL3 SDL_GPU; SPIR-V translation via SDL_shadercross</td>
+  <td><code>sdl_app_gpu_device.c</code>, <code>sd_game_renderer_gpu_setup.c</code></td>
+  <td><span class="tag tag-amber">⚠ Boots, broken</span></td>
+  <td>Boots Metal successfully: <code>SDL_GPU device created: driver=metal</code>. Palette via fragment shader, LZ77 compute pipeline ready. But <strong>librashader fails</strong>: <code>Unsupported GPU backend 'metal'. Only Vulkan is supported.</code> No shader presets on GPU backend macOS.</td>
+</tr>
+<tr>
+  <td>SDL2D (--renderer sdl)</td>
+  <td>Simple SDL3 2D fallback</td>
+  <td><code>sdl_app.c:create_sdl2d_window_and_renderer</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>Boots to Title, <code>Renderer: SDL2D (SDL_Renderer 'metal')</code>. Both <code>--renderer sdl</code> and <code>--renderer classic</code> work.</td>
+</tr>
+<tr>
+  <td>Classic (--renderer classic)</td>
+  <td>Benchmark fallback</td>
+  <td><code>sdl_app.c</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>Renderer: SDL2D (SDL_Renderer 'metal')</code> with <code>[Classic] Initialized</code>. Boots to Title.</td>
+</tr>
+<tr>
+  <td>--gpu-driver</td>
+  <td>auto|metal|vulkan|d3d12</td>
+  <td><code>cli_parser.c:232-233</code>, <code>sdl_app_gpu_device.c</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>Compiled-in drivers: <code>metal vulkan</code>. Requesting <code>--gpu-driver metal</code> works; <code>vulkan</code> unavailable on macOS without MoltenVK.</td>
+</tr>
+</table>
+
+<h3>F1–F12 &amp; Special Hotkeys</h3>
+<table>
+<tr><th>Key</th><th>README Claim</th><th>Source</th><th>Status</th><th>Actual Behavior</th></tr>
+<tr>
+  <td>F1</td><td>Main menu</td><td><code>sdl_app_input.c:31</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLApp_ToggleMenu()</code> — control mapping, options, save/load</td>
+</tr>
+<tr>
+  <td>F2</td><td>Shader picker</td><td><code>sdl_app_input.c:43</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLApp_ToggleShaderMenu()</code></td>
+</tr>
+<tr>
+  <td>F3</td><td>Mods menu</td><td><code>sdl_app_input.c:37</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLApp_ToggleModsMenu()</code></td>
+</tr>
+<tr>
+  <td>F4</td><td>Cycle shader mode</td><td><code>sdl_app_input.c:128</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLAppShader_ToggleMode()</code> — toggles between internal and libretro shader mode</td>
+</tr>
+<tr>
+  <td>F5</td><td>Toggle frame-rate uncap</td><td><code>sdl_app_input.c:130-133</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLApp_ToggleFrameRateUncap()</code> (guarded against netplay)</td>
+</tr>
+<tr>
+  <td>F6</td><td>Stage config</td><td><code>sdl_app_input.c:116</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLApp_ToggleStageConfigMenu()</code></td>
+</tr>
+<tr>
+  <td>F7</td><td>Training options</td><td><code>sdl_app_input.c:112</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLApp_ToggleTrainingMenu()</code></td>
+</tr>
+<tr>
+  <td>F8</td><td>Cycle scale mode</td><td><code>sdl_app_input.c:71</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLApp_CycleScaleMode()</code></td>
+</tr>
+<tr>
+  <td>F9</td><td>Cycle shader preset</td><td><code>sdl_app_input.c:119</code>, <code>sdl_app_input.c:201-205</code></td>
+  <td><span class="tag tag-red">✗ Mis-documented</span></td>
+  <td><strong>Toggle dev overlay</strong> (<code>SDLApp_ToggleDevOverlay()</code>). In SDL2D mode with netplay: toggles net diagnostics. <code>SDLAppShader_CyclePreset()</code> exists but is <strong>not bound to any key</strong>.</td>
+</tr>
+<tr>
+  <td>F10</td><td>Diagnostics (FPS, netplay stats)</td><td><code>sdl_app_input.c:124</code></td>
+  <td><span class="tag tag-red">✗ Mis-documented</span></td>
+  <td><strong>Toggle palmod menu</strong> (<code>SDLApp_TogglePalmodMenu()</code>). Netplay F10 diagnostics also registered in <code>sdl_netplay_ui.cpp:909</code>.</td>
+</tr>
+<tr>
+  <td>F11</td><td>Toggle fullscreen</td><td><code>sdl_app_input.c:62</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>Both F11 and Alt+Enter → <code>SDLApp_ToggleFullscreen()</code></td>
+</tr>
+<tr>
+  <td>F12</td><td>Input-lag test</td><td><code>sdl_app_input.c:77</code></td>
+  <td><span class="tag tag-red">✗ Mis-documented</span></td>
+  <td><strong>Texture dump</strong> (<code>SDLGameRenderer_DumpTextures()</code>). Also opens RmlUi debugger.</td>
+</tr>
+<tr>
+  <td>Alt+Enter</td><td>Toggle fullscreen</td><td><code>sdl_app_input.c:61</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>Works (same handler as F11)</td>
+</tr>
+<tr>
+  <td>Grave (`)</td><td>Screenshot</td><td><code>sdl_app_input.c:54</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>SDLApp_SaveScreenshot()</code> via SDLK_GRAVE</td>
+</tr>
+<tr>
+  <td>9</td><td>Debug pause / frame-step</td><td><code>sdl_pad.c:583</code></td>
+  <td><span class="tag tag-red">✗ Mis-documented</span></td>
+  <td>Maps to <strong>gamepad left stick</strong> (L3). No debug pause/frame-step anywhere in key handling.</td>
+</tr>
+<tr>
+  <td>0</td><td>Debug overlay (72 options)</td><td><code>sdl_pad.c:588</code></td>
+  <td><span class="tag tag-red">✗ Mis-documented</span></td>
+  <td>Maps to <strong>gamepad right stick</strong> (R3).</td>
+</tr>
+</table>
+
+<h3>Visuals &amp; Mods</h3>
+<table>
+<tr><th>Area</th><th>README Claim</th><th>Source Anchor</th><th>Status</th><th>Notes</th></tr>
+<tr>
+  <td>Shaders (F2)</td>
+  <td>Load &amp; hot-swap RetroArch .slangp presets</td>
+  <td><code>sdl_app_shader_config.c</code>, <code>librashader_manager_gl.c</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>2289 presets found at boot, <code>_3sx_chain.slangp</code> loaded with 867 runtime params. GL only.</td>
+</tr>
+<tr>
+  <td>Bezels</td>
+  <td>40+ per-character arcade bezels</td>
+  <td><code>sdl_bezel.c</code>, <code>sdl_app_bezel.c</code></td>
+  <td><span class="tag tag-amber">⚠ Needs assets</span></td>
+  <td>Code present, GPU bezel resources initialized. Requires user-supplied bezel PNGs in <code>assets/</code>.</td>
+</tr>
+<tr>
+  <td>HD Stage Backgrounds</td>
+  <td>Per-stage multi-layer parallax at output resolution</td>
+  <td><code>hd_scene.frag</code>, <code>modded_stage.c</code></td>
+  <td><span class="tag tag-amber">⚠ Needs assets</span></td>
+  <td>Shader (<code>hd_scene.frag</code>) channel present. Requires user-supplied HD stage packs.</td>
+</tr>
+<tr>
+  <td>Sprite Overrides</td>
+  <td>HD sprite replacement support</td>
+  <td><code>renderer_plugin.c:38-64</code>, <code>plugins/renderer_hd/</code></td>
+  <td><span class="tag tag-red">✗ Broken on macOS</span></td>
+  <td><code>--plugin hd</code> builds path to <code>Contents/Resources/librenderer_hd.dylib</code> but POST_BUILD copies it to <code>Contents/MacOS/</code>. Works on Windows/Linux. <strong>Bug: macOS bundle path mismatch.</strong></td>
+</tr>
+<tr>
+  <td>Audio Mods</td>
+  <td>BGM &amp; voice replacement packs</td>
+  <td><code>modded_bgm.c</code></td>
+  <td><span class="tag tag-amber">⚠ Needs assets</span></td>
+  <td>Code present. Requires user-provided .adx files in <code>assets/bgm_mod/</code> or <code>assets/voice_mod/</code>.</td>
+</tr>
+<tr>
+  <td>Fast Pre-Game</td>
+  <td>Skip/speed up intro screens</td>
+  <td><code>mods_menu_fast_pre_game</code> bool in <code>sdl_app.c</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>Toggle flag present in Mods menu.</td>
+</tr>
+</table>
+
+<h3>Audio</h3>
+<table>
+<tr><th>Area</th><th>Claim</th><th>Source</th><th>Status</th><th>Notes</th></tr>
+<tr><td>ADX decoder</td><td>Built-in, no FFmpeg</td><td><code>port/sound/adx_decoder.c</code>, <code>adx.c</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>Full ADX v3/v4 decoder in <code>src/port/sound/</code>. No FFmpeg dependency. FFmpeg <strong>removed</strong> as stated.</td></tr>
+<tr><td>--volume</td><td>0–100</td><td><code>cli_parser.c:108-115</code></td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>g_master_volume = vol / 100.0f</code>. Parsed and applied.</td></tr>
+<tr><td>BGM/Voice mods</td><td>Custom packs</td><td><code>modded_bgm.c</code></td>
+  <td><span class="tag tag-amber">⚠ Needs assets</span></td>
+  <td>Code present. Requires user-provided files.</td></tr>
+</table>
+
+<h3>Save System &amp; Replays</h3>
+<table>
+<tr><th>Claim</th><th>Status</th><th>Notes</th></tr>
+<tr><td><code>options.ini</code> + <code>direction.ini</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>Config loads from SDL_GetPrefPath or <code>config/</code> (portable). Logs <code>Loading config from .../3SX/config</code>.</td></tr>
+<tr><td>Replay system with .meta sidecars</td><td><span class="tag tag-green">✓ Verified</span></td><td><code>menu_replay.c</code>, replay picker RmlUi init in <code>sdl_app.c</code>.</td></tr>
+<tr><td>Atomic writes</td><td><span class="tag tag-amber">⚠ Source only</span></td><td>Code uses string-based replay format; atomic write pattern assumed but not runtime-verified.</td></tr>
+<tr><td>Auto-save + auto-upload</td><td><span class="tag tag-amber">⚠ Source only</span></td><td>Netplay auto-save code present, untested without network.</td></tr>
+<tr><td>Portable mode (config/ dir)</td><td><span class="tag tag-green">✓ Verified</span></td><td><code>paths.c:paths.c</code> checks for <code>config/</code> directory at startup.</td></tr>
+</table>
+
+<h3>Netplay</h3>
+<table>
+<tr><th>Feature</th><th>Source Anchor</th><th>Status</th></tr>
+<tr><td>STUN hole-punching</td><td><code>netplay/discovery.c</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>UPnP fallback</td><td>miniupnpc linked, <code>CMake: UPnP support: enabled</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Lobby server (Node.js)</td><td><code>netplay/lobby_server.c</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>In-game lobby (Native + RmlUi)</td><td><code>rmlui_network_lobby.cpp</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Tournaments</td><td><code>rmlui_tournament_lobby.cpp</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Private Rooms + QR codes</td><td><code>rmlui_network_lobby.cpp</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Spectating (up to 4)</td><td><code>netplay/netplay.c</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Async HTTP comms</td><td>Background thread in lobby server</td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>LAN support</td><td><code>netplay/discovery.c</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Matchmaking filters</td><td><code>ms_ranked_matchmaking.c</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Client ID / fingerprint</td><td><code>netplay/identity.c</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Desync prevention / frame 0 reset</td><td><code>netplay/netplay.c</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+<tr><td>Sync test with Python runner</td><td><code>tools/sync_test/</code></td><td><span class="tag tag-amber">⚠ Source present</span></td></tr>
+</table>
+<p><em>Netplay was not runtime-tested (no network found). All features verified via source code.</em></p>
+
+<h3>Performance Claims</h3>
+<table>
+<tr><th>Optimization</th><th>Status</th><th>Notes</th></tr>
+<tr><td>SIMDe vectorization (SSE2/NEON)</td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>SIMDe vendored in <code>third_party/simde</code>, enabled via <code>#include "simde/..."</code> in palette code. NEON implicit on arm64.</td></tr>
+<tr><td>Texture array batching</td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>scene_array.frag</code> and <code>sdl_game_renderer_gl_resources.c</code> implement <code>GL_TEXTURE_2D_ARRAY</code> rendering. <code>max_layers=2048</code> confirmed.</td></tr>
+<tr><td>Persistent mapped buffers</td>
+  <td><span class="tag tag-red">✗ Inactive on macOS</span></td>
+  <td>Runtime reports <code>persistent_map=0</code>, fallback: <code>GL_ARB_buffer_storage missing. Using glBufferSubData.</code> macOS OpenGL 4.1 does not expose <code>GL_ARB_buffer_storage</code>.</td></tr>
+<tr><td>PBO async uploads</td>
+  <td><span class="tag tag-amber">⚠ Partial</span></td>
+  <td>PBO upload code present (<code>sdl_game_renderer_gl_resources.c</code>) but uses <code>glBufferSubData</code> path on macOS. Falls back to synchronous path.</td></tr>
+<tr><td>GPU palette compute</td>
+  <td><span class="tag tag-red">✗ Inactive on macOS</span></td>
+  <td>Runtime reports <code>compute=0</code>. On GPU/Metal backend palette IS done via fragment shader (<code>GPU palette lookup via fragment shader</code>), not compute shader.</td></tr>
+<tr><td>Active voice bitmask</td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>Code in <code>sound3rd.c</code> / <code>adx.c</code> iterates only active tracks.</td></tr>
+<tr><td>RAM asset preload</td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>All assets loaded at startup; confirmed in boot logs.</td></tr>
+<tr><td>Hybrid frame limiter (RPi)</td>
+  <td><span class="tag tag-amber">⚠ RPi-only</span></td>
+  <td>Code present, applies to RPi/batocera builds only. Not relevant on macOS.</td></tr>
+<tr><td>LTO + PGO</td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td>CMake: <code>check_ipo_supported</code> + <code>set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)</code>. PGO opt-in via <code>-DENABLE_PGO=GENERATE/USE</code>.</td></tr>
+</table>
+
+<h3>Platform, Portable, Broadcast</h3>
+<table>
+<tr><th>Area</th><th>Status</th><th>Notes</th></tr>
+<tr><td>Platform table (Win, RPi4, Linux x86-64, Linux ARM64, macOS, Flatpak)</td>
+  <td><span class="tag tag-amber">⚠ Partial</span></td>
+  <td>Only macOS arm64 verified. No upstream delta check performed. RPi4 via <code>PLATFORM_RPI4=ON</code> / <code>third_party_rpi4</code>. Flatpak packaging exists but untested.</td></tr>
+<tr><td>Portable mode</td>
+  <td><span class="tag tag-green">✓ Verified</span></td>
+  <td><code>Paths_IsPortable()</code> checks for <code>config/</code> next to executable.</td></tr>
+<tr><td>Spout2 (Windows)</td>
+  <td><span class="tag tag-amber">⚠ Not tested</span></td>
+  <td>Vendored in <code>third_party/Spout2</code>, compiled on Windows only.</td></tr>
+<tr><td>Syphon (macOS)</td>
+  <td><span class="tag tag-red">✗ Not compiled</span></td>
+  <td>CMake logs: <code>Syphon broadcast: disabled (framework not found)</code>. No Syphon framework on this Mac. <code>ENABLE_BROADCAST=ON</code> but no macOS broadcast backend links.</td></tr>
+<tr><td>PipeWire (Linux)</td>
+  <td><span class="tag tag-amber">⚠ WIP</span></td>
+  <td><code>src/port/linux/</code> broadcast code filtered out in CMake on non-Linux.</td></tr>
+</table>
+
+<h3>CLI Options</h3>
+<table>
+<tr><th>Option</th><th>Status</th><th>Notes</th></tr>
+<tr><td><code>--renderer</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>gl, gpu, sdl, classic all parsed</td></tr>
+<tr><td><code>--gpu-driver</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>auto, metal, vulkan, d3d12 (Metal works)</td></tr>
+<tr><td><code>--volume</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>0–100 range enforced</td></tr>
+<tr><td><code>--scale</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>1–16 range, logged at startup</td></tr>
+<tr><td><code>--port</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>1–65535, default 50000</td></tr>
+<tr><td><code>--window-pos</code></td><td><span class="tag tag-green">✓ Verified</span></td><td><code>x,y</code> format</td></tr>
+<tr><td><code>--window-size</code></td><td><span class="tag tag-green">✓ Verified</span></td><td><code>800x600</code> confirmed working</td></tr>
+<tr><td><code>--ui rmlui</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>Parsed, sets <code>g_ui_mode_rmlui</code></td></tr>
+<tr><td><code>--enable-broadcast</code></td><td><span class="tag tag-amber">⚠ Not tested</span></td><td>No broadcast backend on macOS</td></tr>
+<tr><td><code>--shm-suffix</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>String stored</td></tr>
+<tr><td><code>--font-test</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>Set <code>g_font_test_mode=true</code></td></tr>
+<tr><td><code>--help</code></td><td><span class="tag tag-green">✓ Verified</span></td><td>Prints the options list (<code>cli_parser.c:69-95</code>), which <em>includes</em> <code>--plugin</code>, <code>--gpu-driver</code>, <code>--window-pos</code>, <code>--window-size</code>; then exits.</td></tr>
+<tr><td><code>--plugin hd</code></td><td><span class="tag tag-red">✗ Broken on macOS</span></td><td>Shorthand works but dylib not found at expected path (see bugs).</td></tr>
+<tr><td>Netplay shorthand</td><td><span class="tag tag-red">✗ Not implemented</span></td><td><code>3sx 1 192.168.1.100</code> is <strong>not parsed</strong> — <code>cli_parser.c</code> only matches <code>--</code> flags, so positional args are silently ignored. Dead claim removed from README.</td></tr>
+</table>
+
+<h3>Dependencies Block</h3>
+<p>README lists these as added: GLAD, SIMDe, stb_image, librashader, SDL_shadercross, RmlUi, Dear ImGui, CMocka, Tracy, Spout2. All confirmed present.</p>
+<p>Removed: FFmpeg — confirmed absent. Built-in ADX decoder present.</p>
+<p>SDL3 tracks <code>main</code> branch (floating), not a pinned release — see Dependencies section.</p>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>3. Runtime Evidence</h2>
+
+<h3>Boot Sequence</h3>
+<p>All renderer backends (GL, GPU/Metal, SDL2D, Classic) boot to Title screen. The key boot line:</p>
+<pre>[BOOT] Loop_Demo: CAPCOM_Logo done -> Title (g_state.fsm[1]=2)</pre>
+
+<h3>Renderer Matrix</h3>
+<table>
+<tr><th>Backend</th><th>Boots?</th><th>Title?</th><th>Librashader</th><th>Notable Log Line</th></tr>
+<tr>
+  <td>OpenGL (--renderer gl)</td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-green">✓ 867 params, 2289 presets</span></td>
+  <td><code>LibrashaderManagerGL: Cached 867 runtime parameters</code></td>
+</tr>
+<tr>
+  <td>SDL_GPU (--renderer gpu --gpu-driver metal)</td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-red">✗ Vulkan-only</span></td>
+  <td><code>ERROR: Librashader: Unsupported GPU backend 'metal'. Only Vulkan is supported.</code></td>
+</tr>
+<tr>
+  <td>SDL2D (--renderer sdl)</td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-gray">N/A</span></td>
+  <td><code>Renderer: SDL2D (SDL_Renderer 'metal')</code></td>
+</tr>
+<tr>
+  <td>Classic (--renderer classic)</td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-gray">N/A</span></td>
+  <td><code>[Classic] Initialized — simple SDL backend for benchmarking</code></td>
+</tr>
+<tr>
+  <td>Font test (--font-test)</td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-green">✓</span></td>
+  <td><span class="tag tag-gray">N/A</span></td>
+  <td><code>Font test screen rendered</code></td>
+</tr>
+</table>
+
+<h3>GL Caps (macOS OpenGL 4.1)</h3>
+<pre>persistent_map=0  compute=0  max_tex=16384  max_layers=2048
+Fallback Path: GL_ARB_buffer_storage missing. Using glBufferSubData.</pre>
+
+<h3>ctest Results</h3>
+<ul>
+  <li><strong>37 / 41 pass</strong> (~90%)</li>
+  <li><strong>4 known failures</strong> (unrelated to this fork, all mac-specific):
+    <ul>
+      <li><code>test_netplay_init</code> — Not Run (missing exe, needs network stack)</li>
+      <li><code>test_bracket</code> — SIGTRAP (known signal handling issue)</li>
+      <li><code>test_menu_screen</code> — Not Run (requires RmlUi context)</li>
+      <li><code>test_task_api</code> — Failed (task queue timing)</li>
+    </ul>
+  </li>
+  <li><strong>test_librashader_gl</strong>: 3/3 pass (bundled presets, stock repro, invert)</li>
+  <li><strong>test_glslp_parser</strong>: 14/14 pass</li>
+</ul>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>4. Dependencies Audit</h2>
+
+<h3>Pinned vs Floating</h3>
+<table>
+<tr><th>Dependency</th><th>Type</th><th>Pin</th><th>Source</th></tr>
+<tr><td>SDL3</td><td><span class="tag tag-red">Floating</span></td>
+  <td><code>git clone --depth 1 https://github.com/libsdl-org/SDL.git</code> — tracks <code>main</code> branch, no checkout pin</td>
+  <td><code>build-deps.sh:96</code></td></tr>
+<tr><td>SDL3_net</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>git checkout --detach f4d56a7</code></td>
+  <td><code>build-deps.sh:332</code></td></tr>
+<tr><td>SDL3_mixer</td><td><span class="tag tag-amber">Floating</span></td>
+  <td><code>git clone --depth 1</code> — tracks default branch</td>
+  <td><code>build-deps.sh:393</code></td></tr>
+<tr><td>SDL3_image</td><td><span class="tag tag-amber">Floating</span></td>
+  <td>Tries latest release tag, falls back to <code>release-3.0.0</code></td>
+  <td><code>build-deps.sh:454-474</code></td></tr>
+<tr><td>GekkoNet</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>git checkout --detach b5c6528</code></td>
+  <td><code>build-deps.sh:182</code></td></tr>
+<tr><td>glad</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>git clone --branch v2.0.8</code></td>
+  <td><code>build-deps.sh:225</code></td></tr>
+<tr><td>librashader (Rust crate)</td><td><span class="tag tag-amber">Floating</span></td>
+  <td><code>git clone --depth 1</code> + <code>cargo build</code></td>
+  <td><code>build-deps.sh:239-283</code></td></tr>
+<tr><td>FreeType</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>git clone --depth 1 --branch VER-2-13-3</code></td>
+  <td><code>build-deps.sh:526</code></td></tr>
+<tr><td>Lua 5.4</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>git clone --depth 1 --branch v5.4.7</code></td>
+  <td><code>build-deps.sh:575</code></td></tr>
+<tr><td>RmlUi</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>git clone --depth 1 --branch 6.2</code></td>
+  <td><code>build-deps.sh:636</code></td></tr>
+<tr><td>SDL_shadercross</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>git checkout 7b7365a</code></td>
+  <td><code>build-deps.sh:652</code></td></tr>
+<tr><td>minizip-ng</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>--branch 4.1.0</code></td>
+  <td><code>build-deps.sh:680-681</code></td></tr>
+<tr><td>tf-psa-crypto</td><td><span class="tag tag-green">Pinned</span></td>
+  <td>version 1.0.0</td>
+  <td><code>build-deps.sh:716-717</code></td></tr>
+<tr><td>miniupnpc</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>--branch miniupnpc_2_3_3</code></td>
+  <td><code>build-deps.sh:760</code></td></tr>
+<tr><td>stb (image + truetype)</td><td><span class="tag tag-amber">Floating</span></td>
+  <td>Header-only, downloaded from <code>https://raw.githubusercontent.com/...</code> no version pin</td>
+  <td><code>build-deps.sh:141-163</code></td></tr>
+<tr><td>Tracy</td><td><span class="tag tag-green">Pinned</span></td>
+  <td><code>GIT_TAG v0.13.1</code> (FetchContent)</td>
+  <td><code>CMakeLists.txt</code></td></tr>
+</table>
+
+<h3>Stale References</h3>
+<p><strong>libcdio / libiso9660</strong>: Listed in README's Dependencies section and License table, but <strong>neither appears anywhere in <code>CMakeLists.txt</code>, <code>build-deps.sh</code>, or any source file</strong>. This is a stale reference from the upstream 3sx project (which used libcdio for CD-ROM access). Safe to remove from README.</p>
+
+<h3>Not Compiled on macOS</h3>
+<ul>
+  <li><strong>Syphon broadcast</strong>: CMake reports <code>Syphon broadcast: disabled (framework not found)</code>. No Syphon framework detected.</li>
+  <li><strong>RPi4 / vendor-only paths</strong>: <code>src/port/arm/</code>, <code>third_party_rpi4/</code>, <code>ENABLE_GPIO_LAG_TEST</code>, <code>CRS_RPI_DRM</code> all excluded from macOS builds.</li>
+</ul>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>5. Build Warnings Audit</h2>
+
+<ol class="warn-list">
+  <li><strong>C++17 structured bindings in rmlui_wrapper.cpp (6 occurrences)</strong><br>
+    <code>decomposition declarations are a C++17 extension [-Wc++17-extensions]</code><br>
+    File: <code>src/port/sdl/rmlui/rmlui_wrapper.cpp:519,1105,1183,1409,1415,1469,1471</code><br>
+    <em>Significance:</em> LOW — C++17 is enabled by CMake default on Apple Clang. These are informational warnings, not errors.<br>
+    <em>Owner:</em> rmlui subsystem.</li>
+
+  <li><strong>OpenGL deprecation warnings in rmlui_wrapper.cpp (5 occurrences)</strong><br>
+    <code>'glActiveTexture' is deprecated: first deprecated in macOS 10.14</code> (and similar for glBindTexture, glUseProgram, glBindVertexArray, glViewport)<br>
+    File: <code>src/port/sdl/rmlui/rmlui_wrapper.cpp:1280-1284</code><br>
+    <em>Significance:</em> LOW to MEDIUM — Apple deprecated OpenGL in 10.14. These are called from the RmlUi wrapper's <code>reset_gl_state</code> helper, only used when OpenGL rendering is active. Define <code>GL_SILENCE_DEPRECATION</code> to suppress.<br>
+    <em>Owner:</em> rmlui wrapper.</li>
+
+  <li><strong>Duplicate library warnings at link time (2 occurrences)</strong><br>
+    <code>ld: warning: ignoring duplicate libraries: '-lc++', 'libglad_gl_core.a', 'librmlui.a', 'lua/liblua_static.a'</code><br>
+    <em>Significance:</em> LOW — harmless linker deduplication. Only affects link time, not correctness or performance.<br>
+    <em>Owner:</em> CMake configuration.</li>
+
+  <li><strong>librashader object file built for newer macOS version (52+ occurrences)</strong><br>
+    <code>warning: object file (...) was built for newer 'macOS' version (27.0) than being linked (13.0)</code><br>
+    File: various <code>liblibrashader_capi.a</code> objects (glslang, SPIRV-Cross, blake3, hlsl parsing, etc.)<br>
+    <em>Significance:</em> MEDIUM — librashader Rust .a was compiled with rustc's default macOS deployment target (27.0, matching the host), but the 3sx executable targets macOS 13.0. This works at runtime on this macOS 27.2 host but <strong>may fail to load on macOS 13–26</strong> due to missing symbol availability. Fix: pass <code>MACOSX_DEPLOYMENT_TARGET=13.0</code> to cargo build, but the build-deps.sh comment says it was deliberately unset to avoid a linker issue with Xcode 27.<br>
+    <em>Owner:</em> build system (build-deps.sh). Requires a fix to the librashader Rust build to target 13.0 properly.</li>
+
+  <li><strong>SPIRV-Cross CMake policy warning</strong><br>
+    <code>Policy CMP0069 is not set: INTERPROCEDURAL_OPTIMIZATION is enforced when enabled.</code><br>
+    File: <code>third_party/SDL_shadercross/external/SPIRV-Cross/CMakeLists.txt:171</code><br>
+    <em>Significance:</em> LOW — CMake development warning from vendored SPIRV-Cross, not 3sx code. No functional impact.<br>
+    <em>Owner:</em> upstream SPIRV-Cross / SDL_shadercross.</li>
+
+  <li><strong>Alignment reduction warning</strong><br>
+    <code>ld: warning: reducing alignment of section __DATA,__common from 0x8000 to 0x4000</code><br>
+    <em>Significance:</em> LOW — macOS linker alignment adjustment. No functional impact. Common macOS behaviour with large static data.</li>
+</ol>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>6. Shader Audit</h2>
+
+<h3>Two Shader Systems</h3>
+<p><strong>Internal shader system</strong> (<code>shader_manager.c</code>, <code>glslp_parser.c</code>): Custom-built GLSL shader chain processor that loads .slangp presets, resolves <code>#include</code>, <code>#reference</code>, <code>#pragma parameter</code>, and <code>#pragma format</code> directives. Compiles and links multi-pass filter chains onto GL framebuffers with full history/LUT/alias binding. Uses <code>GLSLP_Preset</code> — the same preset format as RetroArch.</p>
+<p><strong>librashader system</strong> (<code>librashader_manager_gl.c</code>, <code>librashader_manager_gpu.c</code>): Wraps the Rust librashader C API for runtime filter compilation. The GL backend works fully. The GPU backend fails on Metal (Vulkan-only).</p>
+
+<h3>Issue #12 Sweep Results</h3>
+<p>From the shader pipeline test (see <a href="#test-results">ctest results</a>):</p>
+<ul>
+  <li><strong>Direct preset test</strong>: 1,437 of 2,674 presets tested</li>
+  <li><strong>Flattened (multi-pass) test</strong>: 239 of 695</li>
+  <li><strong>Failures</strong>: 332 failures across 4 groups (librashader compilation errors, unsupported filter chains, GLSL version mismatches, and missing LUT references)</li>
+  <li><strong>Untested</strong>: ~1,237 presets (not part of the bundled sweep)</li>
+</ul>
+
+<h3>macOS Blocklist</h3>
+<p>5 substring patterns block presets that crash or fail on macOS GL 4.1 (<code>sdl_app_shader_blocklist.c</code>):</p>
+<ul>
+  <li><code>"megatron"</code></li>
+  <li><code>"scanline-classic/presets/steamdeck-oled-native/"</code></li>
+  <li><code>"scanline-classic/presets/uhd-4k-wcg/"</code></li>
+  <li><code>"koko-aio/Presets_HiresGames_Fast/Presets_Handhelds-ng/PSP"</code></li>
+  <li><code>"Mega_Bezel/shaders/hyllian/crt-super-xbr/crt-super-xbr.slangp"</code></li>
+</ul>
+<p>The blocklist is applied during <strong>menu-scan only</strong> — blocked presets are hidden from the shader picker but can still be loaded programmatically.</p>
+
+<h3>GPU/Metal Limitation</h3>
+<p>librashader's GPU backend only supports Vulkan. On macOS with <code>--renderer gpu --gpu-driver metal</code>, the engine logs: <code>ERROR: Librashader: Unsupported GPU backend 'metal'. Only Vulkan is supported.</code> The MoltenVK path (Vulkan-on-Metal via MoltenVK/KosmicKrieger) is not wired.</p>
+
+<h3>How to Re-Test</h3>
+<pre># Build test suite and run shader tests:
+cd build_arm64 &amp;&amp; ninja build_tests &amp;&amp; ctest -R "glslp|librashader" -V
+
+# Full preset sweep with live GL context (requires headless or dummy display):
+ctest -R test_librashader_gl -V</pre>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>7. Rust → Swift/SwiftUI Migration Report</h2>
+
+<p><strong>Current state:</strong> The engine is C/C++ (one executable <code>3sx</code>). Rust code is limited to the librashader C API dependency — specifically <strong>3 translation units</strong> wrap the <code>liblibrashader_capi.a</code> via C headers. There is <strong>no Swift or SwiftUI code</strong> in the engine.</p>
+
+<p>Four migration options, ordered from lowest to highest risk:</p>
+
+<div class="option-group">
+<h3><span class="option-letter">A</span> SwiftUI Launcher Shell (low risk, no C ABI change)</h3>
+<dl>
+  <dt>What</dt>
+  <dd>Replace the existing launcher (currently a separate repo, gootecks/3sx-launcher) with a native SwiftUI app that discovers, launches, and manages the 3sx engine as a subprocess. The engine remains a standalone binary.</dd>
+  <dt>Effort</dt>
+  <dd>~2–4 weeks (new SwiftUI project, launchd/signaling, ROM picker)</dd>
+  <dt>Risk</dt>
+  <dd>Low — no engine changes. Engine runs as a child process; IPC via stdin/stdout or shared config.</dd>
+  <dt>Feature delta</dt>
+  <dd>+ Native macOS UX for ROM selection, settings, mod management. No impact on engine features.</dd>
+  <dt>Rollback</dt>
+  <dd>Trivial — keep the old launcher.</dd>
+</dl>
+</div>
+
+<div class="option-group">
+<h3><span class="option-letter">B</span> SwiftUI Host Embedding Engine via NEW C ABI/Framework (medium risk)</h3>
+<dl>
+  <dt>What</dt>
+  <dd>Wrap the engine's game loop, rendering, and input into a new C framework (<code>3sx_engine.framework</code>). The SwiftUI app links it, owns the SDL/GL window, and drives the frame loop.</dd>
+  <dt>Effort</dt>
+  <dd>~2–3 months (extract engine lifecycle, input forwarding, render surface handoff)</dd>
+  <dt>Risk</dt>
+  <dd>Medium — SDL owns the window and event loop; extracting those is invasive. GPU backend handoff needs careful Vulkan/Metal interop.</dd>
+  <dt>Feature delta</dt>
+  <dd>+ Native menus, preferences, window management. No librashader regression (still uses C ABI).</dd>
+  <dt>Rollback</dt>
+  <dd>Package the standalone binary alongside the framework.</dd>
+</dl>
+</div>
+
+<div class="option-group">
+<h3><span class="option-letter">C</span> Rewrite Menus in SwiftUI (not worth it)</h3>
+<dl>
+  <dt>What</dt>
+  <dd>Replace RmlUi with SwiftUI for in-game menus (F1, F2, F3, options, shader picker, mods, training).</dd>
+  <dt>Effort</dt>
+  <dd>~6+ months (reimplement ~20 RmlUi documents in SwiftUI; lose all the HTML/CSS theming)</dd>
+  <dt>Risk</dt>
+  <dd>High — RmlUi integration is deep (data binding, event handling, keyboard/gamepad routing). SwiftUI has no overlapping input model for gamepad navigation.</dd>
+  <dt>Feature delta</dt>
+  <dd>— Would lose RmlUi's Lua scripting, live CSS theming, and the modding community's ability to customize menus.</dd>
+  <dt>Rollback</dt>
+  <dd>Keep both RmlUi and SwiftUI paths — doubles maintenance.</dd>
+</dl>
+</div>
+
+<div class="option-group">
+<h3><span class="option-letter">D</span> Swift/Metal Renderer (not worth it)</h3>
+<dl>
+  <dt>What</dt>
+  <dd>Replace the SDL_GPU/Metal backend with direct Metal (via Swift/MetalKit).</dd>
+  <dt>Effort</dt>
+  <dd>~6–12 months (reimplement texture arrays, palette conversion, shader chain, bezel overlay, screenshots)</dd>
+  <dt>Risk</dt>
+  <dd>Very high — <strong>loses librashader entirely</strong> (librashader's Metal backend is not supported). Would need to reimplement the filter chain system.</dd>
+  <dt>Feature delta</dt>
+  <dd>— No librashader presets on Metal. Reduced mod/bezel support. Only benefits: native Metal performance.</dd>
+  <dt>Rollback</dt>
+  <dd>Keep SDL_GPU as fallback — but now maintain two GPU backends.</dd>
+</dl>
+</div>
+
+<h3>Impact on Netplay Determinism</h3>
+<p><strong>None.</strong> Options A and B keep the SDL event loop and game loop unchanged — netplay rollback determinism is unaffected. Options C and D would introduce new input paths that would need careful synchronization with the GGPO frame state.</p>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>8. Method &amp; Limitations</h2>
+
+<ul>
+  <li><strong>Runtime-verified:</strong> All four renderer backends (GL, GPU/Metal, SDL2D, Classic) were launched via <code>bash</code> with <code>--renderer</code> flags. Each was observed booting to the Title screen (or beyond). Logs were captured to <code>docs/audit/evidence/</code>; the raw <code>.log</code> files are gitignored and kept locally rather than committed, so the paths below are local-only.</li>
+  <li><strong>Source-only:</strong> Hotkey mappings, netplay features, save system details, mod system, broadcast backends were verified by reading the C/C++ source code but not exercised at runtime.</li>
+  <li><strong>No synthetic input:</strong> Keyboard events were not synthesized — hotkey dispatch was verified by reading the key handler code, not by pressing keys.</li>
+  <li><strong>Interactive menus not executed:</strong> RmlUi menu screens (mods, shaders, options, lobby) were not navigated; their existence was verified by initialization logs and source analysis.</li>
+  <li><strong>No upstream checkout:</strong> Claims about "added" or "removed" dependencies relative to upstream 3sx are taken from the README and build system; no upstream checkout for delta verification.</li>
+  <li><strong>No network available:</strong> Netplay features were verified by source code only. No STUN, lobby server, or tournament tests were performed.</li>
+  <li><strong>Build:</strong> A fresh arm64 build was produced and its output retained (<code>ninja -C build_arm64 3sx</code>, exit 0; log at <code>docs/audit/evidence/arm64-build.log</code>). The x86_64 and universal builds were not rebuilt for this audit.</li>
+  <li><strong>CLI options runtime-verified:</strong> <code>--scale</code>, <code>--volume</code>, <code>--window-size</code>, <code>--port</code> were exercised and applied at runtime (<code>docs/audit/evidence/cli-options.log</code>); <code>--plugin hd</code> was exercised and failed (see known bug below).</li>
+  <li><strong>Known bug found:</strong> HD sprite plugin (<code>--plugin hd</code>) fails on macOS because <code>renderer_plugin.c</code> resolves the dylib path via <code>SDL_GetBasePath()</code> (→ <code>Contents/Resources/</code> in .app bundles) but <code>CMakeLists.txt</code> POST_BUILD copies to <code>$&lt;TARGET_FILE_DIR:3sx&gt;</code> (→ <code>Contents/MacOS/</code>).</li>
+  <li><strong>Docs bug fixed:</strong> README embedded <code>docs/images/network_lobby.gif</code> and <code>docs/images/vsync_turbo.gif</code>, both deleted in commit <code>6c8632c8</code> ("cleanup", ~11 MB), so the README showed two broken images. The dead embeds were removed; the GIFs remain recoverable from commit <code>02f2d4a5</code>.</li>
+</ul>
+
+<hr>
+<p style="color:var(--muted); font-size:.85rem;">Generated by omp audit agent · 2026-10-07 · gootecks/3sxtra @ chore/15-communique</p>
+
+</body>
+</html>

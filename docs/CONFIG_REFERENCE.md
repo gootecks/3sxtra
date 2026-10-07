@@ -48,6 +48,8 @@ Delete the file to regenerate with defaults.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| `renderer` | string | `gl` | Backend: `gl`, `gpu` (SDL_GPU), `sdl`, `classic`; `--renderer` overrides |
+| `gpu-driver` | string | `auto` | SDL_GPU driver: `auto`, `metal`, `vulkan`, `d3d12`; `--gpu-driver` overrides. See [render-drivers.md](render-drivers.md) |
 | `scale-mode` | string | `nearest` | Upscale filter: `nearest` or `soft-linear` |
 | `draw-rect-borders` | bool | `false` | Draw debug borders around rects |
 | `dump-textures` | bool | `false` | Dump textures to disk (debug) |

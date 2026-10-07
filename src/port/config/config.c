@@ -51,6 +51,7 @@ static const ConfigEntry default_entries[] = {
     { .key = CFG_KEY_WINDOW_HEIGHT, .type = CFG_INT, .value.i = 1080 },
     { .key = CFG_KEY_SCALEMODE, .type = CFG_STRING, .value.s = "nearest" },
     { .key = CFG_KEY_RENDERER, .type = CFG_STRING, .value.s = "gl" },
+    { .key = CFG_KEY_GPU_DRIVER, .type = CFG_STRING, .value.s = "auto" },
     { .key = CFG_KEY_DRAW_RECT_BORDERS, .type = CFG_BOOL, .value.b = false },
     { .key = CFG_KEY_DUMP_TEXTURES, .type = CFG_BOOL, .value.b = false },
     { .key = CFG_KEY_SHADER_PATH, .type = CFG_STRING, .value.s = "" },
@@ -230,7 +231,8 @@ static const ConfigComment section_comments[] = {
     { CFG_KEY_SCALEMODE,
       "\n# ── Rendering ───────────────────────────────────────────\n"
       "# scale-mode: nearest | soft-linear\n"
-      "# renderer: auto | gl | gpu | sdl | classic (auto uses platform default)\n" },
+      "# renderer: auto | gl | gpu | sdl | classic (auto uses platform default)\n"
+      "# gpu-driver: auto | metal | vulkan | d3d12 (SDL_GPU driver for renderer=gpu)\n" },
     { CFG_KEY_BROADCAST_ENABLED,
       "\n# ── Broadcast ───────────────────────────────────────────\n"
       "# broadcast-source: 0=Game, 1=Window\n" },

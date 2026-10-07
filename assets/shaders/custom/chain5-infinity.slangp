@@ -3,9 +3,9 @@
 # The ultimate brute-force shader chain. One to rule them all.
 #
 # ScaleFX (passes 0-5): Redraws sprite contours into perfect curves (3x).
-# NNEDI3 (passes 6-8): Neural network 2x refinement on ScaleFX output (6x total).
-# OmniScale (pass 9): Multi-algorithm edge refinement at source scale.
-# Jinc2 (pass 10): Windowed sinc final stretch to monitor resolution.
+# NNEDI3 (passes 6-10): Neural network 2x refinement on ScaleFX output (6x total).
+# OmniScale (pass 11): Multi-algorithm edge refinement at source scale.
+# Jinc2 (pass 12): Windowed sinc final stretch to monitor resolution.
 #
 # ⚠️ ScaleFX uses pass aliases (refpass, scalefx_pass0) — may fail in
 # librashader if the alias semantics aren't supported. If it fails,
@@ -14,7 +14,9 @@
 # Total scaling: 384x224 → 1152x672 (ScaleFX 3x) → 2304x1344 (NNEDI3 2x)
 #                → OmniScale refine → Jinc2 viewport stretch
 
-shaders = 11
+NNEDI_CSHIFT_PIXELS = "0.5"
+
+shaders = 13
 
 # ══════════════════════════════════════════════════════════
 # Stage 1: ScaleFX — Curve Redrawing (3x)
@@ -50,39 +52,58 @@ shader5 = ../edge-smoothing/scalefx/shaders/scalefx-pass4.slang
 filter_linear5 = false
 scale_type5 = source
 scale5 = 3.0
+alias5 = nnediPass0
 
 # ══════════════════════════════════════════════════════════
 # Stage 2: NNEDI3 — Neural Network Refinement (2x, nns64)
 # ══════════════════════════════════════════════════════════
-shader6 = ../edge-smoothing/nnedi3/shaders/nnedi3-nns64-win8x4-pass1-rgb.slang
+shader6 = ../edge-smoothing/nnedi3/shaders/nnedi3-nns64-win8x4-predict-v-rgb.slang
 filter_linear6 = false
 scale_type6 = source
 scale_x6 = 1.0
-scale_y6 = 2.0
+scale_y6 = 1.0
+wrap_mode6 = "clamp_to_edge"
 
-shader7 = ../edge-smoothing/nnedi3/shaders/nnedi3-nns64-win8x4-pass2-rgb.slang
+shader7 = ../edge-smoothing/nnedi3/shaders/nnedi3-combine-v-pass0.slang
 filter_linear7 = false
 scale_type7 = source
-scale_x7 = 2.0
-scale_y7 = 1.0
+scale_x7 = 1.0
+scale_y7 = 2.0
+wrap_mode7 = "clamp_to_edge"
+alias7 = nnedi3Prev1
 
-shader8 = ../edge-smoothing/nnedi3/shaders/jinc2-cshift-rgb.slang
+shader8 = ../edge-smoothing/nnedi3/shaders/nnedi3-nns64-win8x4-predict-h-rgb.slang
 filter_linear8 = false
 scale_type8 = source
 scale_x8 = 1.0
 scale_y8 = 1.0
+wrap_mode8 = "clamp_to_edge"
+
+shader9 = ../edge-smoothing/nnedi3/shaders/nnedi3-combine-h-prev1.slang
+filter_linear9 = false
+scale_type9 = source
+scale_x9 = 2.0
+scale_y9 = 1.0
+wrap_mode9 = "clamp_to_edge"
+
+shader10 = ../edge-smoothing/nnedi3/shaders/jinc2-cshift-rgb.slang
+filter_linear10 = false
+scale_type10 = source
+scale_x10 = 1.0
+scale_y10 = 1.0
+wrap_mode10 = "clamp_to_edge"
 
 # ══════════════════════════════════════════════════════════
 # Stage 3: OmniScale — Edge Refinement
 # ══════════════════════════════════════════════════════════
-shader9 = ../edge-smoothing/omniscale/shaders/omniscale.slang
-filter_linear9 = false
-scale_type9 = source
-scale9 = 1.0
+shader11 = ../edge-smoothing/omniscale/shaders/omniscale.slang
+filter_linear11 = false
+scale_type11 = source
+scale11 = 1.0
 
 # ══════════════════════════════════════════════════════════
 # Stage 4: Jinc2 — Final Viewport Stretch
 # ══════════════════════════════════════════════════════════
-shader10 = ../interpolation/shaders/jinc2.slang
-filter_linear10 = true
-scale_type10 = viewport
+shader12 = ../interpolation/shaders/jinc2.slang
+filter_linear12 = true
+scale_type12 = viewport

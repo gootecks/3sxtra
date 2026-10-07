@@ -35,6 +35,8 @@ typedef struct {
     double lag_ms;          /**< Actual measured lag in milliseconds (active - receive) */
 } GpioLagTestState;
 
+#ifdef ENABLE_GPIO_LAG_TEST
+
 void GpioLagTest_Init(void);
 void GpioLagTest_Shutdown(void);
 void GpioLagTest_OnInputPoll(void);
@@ -57,6 +59,8 @@ static inline GpioLagTestState GpioLagTest_GetState(void) {
     GpioLagTestState s = { 0 };
     return s;
 }
+
+#endif /* ENABLE_GPIO_LAG_TEST */
 
 #ifdef __cplusplus
 }

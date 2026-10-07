@@ -12,6 +12,7 @@
 #include "port/sdl/app/sdl_app.h"
 #include "port/sdl/app/sdl_app_config.h"
 #include "port/sdl/app/sdl_app_internal.h"
+#include "port/sdl/app/sdl_app_shader_blocklist.h"
 #include "shaders/glslp_parser.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -31,6 +32,7 @@ static bool s_shader_initialized = false;
 static GLSLP_Preset s_chain_preset; // The composed chain
 static bool s_chain_active = false; // True when chain is in use (vs single preset)
 static bool s_chain_needs_apply = false;
+static char s_chain_error[256]; // Last chain load/apply failure shown in the shader menu; empty when none
 
 // ── Standalone parameter cache (reads from preset file, no GL state needed) ──
 static struct libra_preset_param_list_t s_param_cache = { 0 };
@@ -77,6 +79,16 @@ static void scan_presets_recursive(const char* base_path, const char* relative_p
                 bool is_slangp = (len > 7 && strcmp(entry + len - 7, ".slangp") == 0);
 
                 if (is_slangp) {
+                    char preset_rel_path[1024];
+                    if (relative_path[0] == '\0') {
+                        snprintf(preset_rel_path, sizeof(preset_rel_path), "%s", entry);
+                    } else {
+                        snprintf(preset_rel_path, sizeof(preset_rel_path), "%s/%s", relative_path, entry);
+                    }
+                    if (SDLAppShader_IsPresetBlocked(preset_rel_path)) {
+                        continue;
+                    }
+
                     // Found a valid preset/shader
                     if (*count >= *capacity) {
                         *capacity *= 2;
@@ -84,14 +96,6 @@ static void scan_presets_recursive(const char* base_path, const char* relative_p
                             *capacity = 16;
                         *list = (char**)SDL_realloc(*list, *capacity * sizeof(char*));
                     }
-
-                    char preset_rel_path[1024];
-                    if (relative_path[0] == '\0') {
-                        snprintf(preset_rel_path, sizeof(preset_rel_path), "%s", entry);
-                    } else {
-                        snprintf(preset_rel_path, sizeof(preset_rel_path), "%s/%s", relative_path, entry);
-                    }
-
                     (*list)[*count] = SDL_strdup(preset_rel_path);
                     (*count)++;
                 }
@@ -571,22 +575,32 @@ static void chain_load_and_merge(int preset_index, bool prepend) {
             full_path[i] = '/';
     }
 
+    const char* preset_name = available_presets[preset_index];
     GLSLP_Preset* src = GLSLP_Load(full_path);
     if (!src) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ChainAppend: Failed to load preset '%s'", full_path);
+        snprintf(s_chain_error, sizeof(s_chain_error), "Could not load %s (see log)", preset_name);
         return;
     }
 
+    bool merged;
     if (prepend) {
         // Prepend: src goes first, current chain goes after
-        GLSLP_Append(src, &s_chain_preset);
-        s_chain_preset = *src;
+        merged = GLSLP_Append(src, &s_chain_preset);
+        if (merged)
+            s_chain_preset = *src;
     } else {
         // Append: current chain stays, src goes after
-        GLSLP_Append(&s_chain_preset, src);
+        merged = GLSLP_Append(&s_chain_preset, src);
+    }
+    GLSLP_Free(src);
+
+    if (!merged) {
+        snprintf(s_chain_error, sizeof(s_chain_error), "Adding %s would exceed %d passes", preset_name, MAX_SHADERS);
+        return;
     }
 
-    GLSLP_Free(src);
+    s_chain_error[0] = '\0';
     s_chain_active = true;
     s_chain_needs_apply = true;
 
@@ -663,6 +677,7 @@ void SDLAppShader_ChainClear(void) {
     memset(&s_chain_preset, 0, sizeof(GLSLP_Preset));
     s_chain_active = false;
     s_chain_needs_apply = true;
+    s_chain_error[0] = '\0';
 
     // Clear param cache
     if (s_param_cache_valid) {
@@ -724,6 +739,7 @@ void SDLAppShader_ChainApply(void) {
     libretro_manager = LibrashaderManager_Init(temp_path);
     if (!libretro_manager) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "ChainApply: Failed to init manager from merged preset");
+        snprintf(s_chain_error, sizeof(s_chain_error), "Shader chain failed to compile (see log)");
     } else {
         SDL_Log("ChainApply: Loaded merged chain (%d passes)", s_chain_preset.pass_count);
         Config_SetString(CFG_KEY_SHADER_PATH, "_3sx_chain.slangp");
@@ -734,6 +750,10 @@ void SDLAppShader_ChainApply(void) {
 
 int SDLAppShader_ChainGetPassCount(void) {
     return s_chain_active ? s_chain_preset.pass_count : 0;
+}
+
+const char* SDLAppShader_ChainGetLastError(void) {
+    return s_chain_error;
 }
 
 const char* SDLAppShader_ChainGetPassShaderPath(int pass_index) {

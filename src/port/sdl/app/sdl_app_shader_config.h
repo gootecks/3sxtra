@@ -53,6 +53,8 @@ void SDLAppShader_ChainApply(void);
 int SDLAppShader_ChainGetPassCount(void);
 const char* SDLAppShader_ChainGetPassShaderPath(int pass_index);
 const char* SDLAppShader_ChainGetPassSourcePreset(int pass_index);
+// Last chain load/apply failure as a user-facing message; empty string when none.
+const char* SDLAppShader_ChainGetLastError(void);
 
 // Save the current chain as a new .slangp preset file.
 bool SDLAppShader_ChainSaveAsPreset(const char* path);
@@ -112,6 +114,9 @@ static inline const char* SDLAppShader_ChainGetPassShaderPath(int pass_index) {
 }
 static inline const char* SDLAppShader_ChainGetPassSourcePreset(int pass_index) {
     return NULL;
+}
+static inline const char* SDLAppShader_ChainGetLastError(void) {
+    return "";
 }
 static inline bool SDLAppShader_ChainSaveAsPreset(const char* path) {
     return false;

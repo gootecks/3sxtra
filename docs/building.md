@@ -124,6 +124,8 @@ cmake --build build_tests --parallel
 cd build_tests && ctest --output-on-failure
 ```
 
+`test_librashader_gl` opens a hidden SDL window with the engine's GL context attributes (4.1 core on macOS, 4.6 core elsewhere) and builds a librashader filter chain for every bundled preset in `assets/shaders/custom`. It also renders through `stock.slangp` and a fixture inversion preset and reads the pixels back, so a preset that compiles but silently draws nothing still fails. It skips when no GL context can be created (headless CI without a display).
+
 ---
 
 ## 4. Cross-Compilation & Packaging

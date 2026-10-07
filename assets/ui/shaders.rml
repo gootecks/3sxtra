@@ -74,6 +74,7 @@
             </div>
             <div class="column col-right">
                 <h2>Active Chain ({{chain_pass_count}} passes)</h2>
+                <div data-if="chain_error != ''" class="status-warn">{{chain_error}}</div>
                 <div data-if="chain_pass_count > 0" id="chain-pass-list">
                     <div id="chain-pass-table">
                         <div data-for="pass : chain_passes"

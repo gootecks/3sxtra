@@ -531,9 +531,11 @@ if(PLATFORM_RPI4)
     # ARM Cortex-A72 (RPi4): NEON is baseline, add crypto+CRC extensions.
     # -O3 overrides RelWithDebInfo's -O2 for max throughput on the constrained Pi4.
     target_compile_options(3sx PRIVATE -O3 -mcpu=cortex-a72 -mtune=cortex-a72)
-elseif(APPLE)
+elseif(APPLE AND ("x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES OR (NOT CMAKE_OSX_ARCHITECTURES AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")))
     # Universal-safe: SSE4.2 only for the x86_64 slice (all macOS 13-capable Intel Macs have it).
     target_compile_options(3sx PRIVATE "SHELL:-Xarch_x86_64 -msse4.2")
+elseif(APPLE)
+    message(STATUS "SIMD: Apple arm64-only target — NEON is implicit, no extra flags needed")
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
     # Generic ARM64: NEON is baseline, no specific CPU tuning.
     message(STATUS "SIMD: ARM64 target — NEON is implicit, no extra flags needed")

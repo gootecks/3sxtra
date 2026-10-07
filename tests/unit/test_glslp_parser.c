@@ -9,6 +9,7 @@
  *  - parse_bool with invalid string values
  *  - parse_scale_type with unexpected enum strings
  *  - sb_append with empty string (StringBuilder from shader_manager.c)
+ *  - GLSLP_Load "#reference" resolution, override precedence, 0-pass and cycle rejection
  */
 #include <stdarg.h>
 #include <stddef.h>
@@ -62,11 +63,11 @@ static void test_glslp_load_missing_file(void** state) {
       the function at least handles a valid-but-empty append correctly. */
 static void test_glslp_append_empty_src(void** state) {
     (void)state;
-    GLSLP_Preset dst = {0};
+    GLSLP_Preset dst = { 0 };
     dst.pass_count = 1;
     strncpy(dst.passes[0].path, "pass0.slang", MAX_PATH - 1);
 
-    GLSLP_Preset src = {0}; /* 0 passes, 0 textures, 0 params */
+    GLSLP_Preset src = { 0 }; /* 0 passes, 0 textures, 0 params */
 
     bool ok = GLSLP_Append(&dst, &src);
     assert_true(ok);
@@ -76,10 +77,10 @@ static void test_glslp_append_empty_src(void** state) {
 /* 2b. GLSLP_Append overflow — combined passes exceed MAX_SHADERS */
 static void test_glslp_append_overflow(void** state) {
     (void)state;
-    GLSLP_Preset dst = {0};
+    GLSLP_Preset dst = { 0 };
     dst.pass_count = MAX_SHADERS;
 
-    GLSLP_Preset src = {0};
+    GLSLP_Preset src = { 0 };
     src.pass_count = 1;
 
     bool ok = GLSLP_Append(&dst, &src);
@@ -89,7 +90,7 @@ static void test_glslp_append_overflow(void** state) {
 /* 3. GLSLP_MovePass with invalid indices — negative, out of range, from==to */
 static void test_glslp_movepass_invalid_indices(void** state) {
     (void)state;
-    GLSLP_Preset preset = {0};
+    GLSLP_Preset preset = { 0 };
     preset.pass_count = 3;
     strncpy(preset.passes[0].path, "A", MAX_PATH - 1);
     strncpy(preset.passes[1].path, "B", MAX_PATH - 1);
@@ -178,8 +179,8 @@ static void test_sb_append_empty_string(void** state) {
 }
 
 /* 7. GLSLP_RemovePass — valid middle removal */
-static void test_remove_pass_valid(void **state) {
-    (void) state;
+static void test_remove_pass_valid(void** state) {
+    (void)state;
     GLSLP_Preset preset;
     memset(&preset, 0, sizeof(preset));
 
@@ -198,8 +199,8 @@ static void test_remove_pass_valid(void **state) {
 }
 
 /* 8. GLSLP_RemovePass — out-of-bounds low index */
-static void test_remove_pass_out_of_bounds_low(void **state) {
-    (void) state;
+static void test_remove_pass_out_of_bounds_low(void** state) {
+    (void)state;
     GLSLP_Preset preset;
     memset(&preset, 0, sizeof(preset));
 
@@ -213,8 +214,8 @@ static void test_remove_pass_out_of_bounds_low(void **state) {
 }
 
 /* 9. GLSLP_RemovePass — out-of-bounds high index */
-static void test_remove_pass_out_of_bounds_high(void **state) {
-    (void) state;
+static void test_remove_pass_out_of_bounds_high(void** state) {
+    (void)state;
     GLSLP_Preset preset;
     memset(&preset, 0, sizeof(preset));
 
@@ -228,9 +229,101 @@ static void test_remove_pass_out_of_bounds_high(void **state) {
 }
 
 /* 10. GLSLP_RemovePass — null preset */
-static void test_remove_pass_null_preset(void **state) {
-    (void) state;
+static void test_remove_pass_null_preset(void** state) {
+    (void)state;
     GLSLP_RemovePass(NULL, 0);
+}
+
+/* ── #reference fixtures ────────────────────────────────────────────── */
+
+#define REF_DIR "glslp_ref_test"
+
+static void write_file(const char* path, const char* body) {
+    FILE* f = fopen(path, "w");
+    assert_non_null(f);
+    fputs(body, f);
+    fclose(f);
+}
+
+static bool ends_with(const char* s, const char* suffix) {
+    size_t sl = strlen(s), xl = strlen(suffix);
+    return sl >= xl && strcmp(s + sl - xl, suffix) == 0;
+}
+
+static int ref_setup(void** state) {
+    (void)state;
+    SDL_CreateDirectory(REF_DIR "/base");
+    SDL_CreateDirectory(REF_DIR "/presets");
+    write_file(REF_DIR "/base/base.slangp",
+               "shaders = 2\n"
+               "shader0 = \"a.slang\"\n"
+               "shader1 = \"b.slang\"\n"
+               "filter_linear1 = false\n"
+               "parameters = \"GAMMA;KEEP\"\n"
+               "textures = \"LUT\"\n"
+               "LUT = \"lut.png\"\n"
+               "GAMMA = \"1.0\"\n"
+               "KEEP = \"3.0\"\n");
+    write_file(REF_DIR "/presets/child.slangp",
+               "#reference \"../base/base.slangp\"\n"
+               "GAMMA = \"2.2\"\n"
+               "filter_linear1 = true\n");
+    write_file(REF_DIR "/presets/params_only.slangp", "GAMMA = \"2.2\"\n");
+    write_file(REF_DIR "/presets/cycle_a.slangp",
+               "#reference \"cycle_b.slangp\"\nshaders = 1\nshader0 = \"x.slang\"\n");
+    write_file(REF_DIR "/presets/cycle_b.slangp", "#reference \"cycle_a.slangp\"\n");
+    return 0;
+}
+
+static int ref_teardown(void** state) {
+    (void)state;
+    SDL_RemovePath(REF_DIR "/base/base.slangp");
+    SDL_RemovePath(REF_DIR "/presets/child.slangp");
+    SDL_RemovePath(REF_DIR "/presets/params_only.slangp");
+    SDL_RemovePath(REF_DIR "/presets/cycle_a.slangp");
+    SDL_RemovePath(REF_DIR "/presets/cycle_b.slangp");
+    SDL_RemovePath(REF_DIR "/base");
+    SDL_RemovePath(REF_DIR "/presets");
+    SDL_RemovePath(REF_DIR);
+    return 0;
+}
+
+/* 11. Passes/textures come from the referenced file (paths relative to it); the referencing file's keys win. */
+static void test_load_reference_merges_with_overrides(void** state) {
+    (void)state;
+    GLSLP_Preset* p = GLSLP_Load(REF_DIR "/presets/child.slangp");
+    assert_non_null(p);
+
+    char expected[64];
+    assert_int_equal(p->pass_count, 2);
+    snprintf(expected, sizeof(expected), "base%ca.slang", PATH_SEPARATOR);
+    assert_true(ends_with(p->passes[0].path, expected));
+    assert_true(p->passes[1].filter_linear);
+    assert_string_equal(p->passes[0].source_preset, REF_DIR "/presets/child.slangp");
+
+    assert_int_equal(p->texture_count, 1);
+    snprintf(expected, sizeof(expected), "base%clut.png", PATH_SEPARATOR);
+    assert_true(ends_with(p->textures[0].path, expected));
+
+    assert_int_equal(p->parameter_count, 2);
+    int gamma = find_parameter_index(p, "GAMMA");
+    int keep = find_parameter_index(p, "KEEP");
+    assert_true(gamma >= 0 && keep >= 0);
+    assert_float_equal(p->parameters[gamma].value, 2.2f, 1e-6);
+    assert_float_equal(p->parameters[keep].value, 3.0f, 1e-6);
+    GLSLP_Free(p);
+}
+
+/* 12. A preset that resolves to no passes is a load failure, not an empty success. */
+static void test_load_zero_pass_preset_fails(void** state) {
+    (void)state;
+    assert_null(GLSLP_Load(REF_DIR "/presets/params_only.slangp"));
+}
+
+/* 13. Reference cycles terminate with a failure. */
+static void test_load_reference_cycle_fails(void** state) {
+    (void)state;
+    assert_null(GLSLP_Load(REF_DIR "/presets/cycle_a.slangp"));
 }
 
 /* ── Runner ─────────────────────────────────────────────────────────── */
@@ -248,6 +341,9 @@ int main(void) {
         cmocka_unit_test(test_remove_pass_out_of_bounds_low),
         cmocka_unit_test(test_remove_pass_out_of_bounds_high),
         cmocka_unit_test(test_remove_pass_null_preset),
+        cmocka_unit_test_setup_teardown(test_load_reference_merges_with_overrides, ref_setup, ref_teardown),
+        cmocka_unit_test_setup_teardown(test_load_zero_pass_preset_fails, ref_setup, ref_teardown),
+        cmocka_unit_test_setup_teardown(test_load_reference_cycle_fails, ref_setup, ref_teardown),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

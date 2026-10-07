@@ -11,6 +11,14 @@
 | `sdl` | SDL_Renderer (2D) | Simple path. It is also the last-resort fallback |
 | `classic` | SDL_Renderer, unoptimized | Benchmark/reference path |
 
+On `gl`, librashader compiles presets for the GLSL version of the live context (`glsl_version = 0`), so macOS gets GLSL 4.10. Forcing `#version 460` there fails every preset with `version '460' is not supported`. A preset that fails to build only logs an error; the game keeps rendering unshaded, so `test_librashader_gl` (see [building.md](building.md#unit-tests)) is the guard. Raspberry Pi 4 pins 330 and Android 300 es.
+
+On macOS, presets known to fail under GL 4.1 are hidden from the shader menu by `sdl_app_shader_blocklist.c` (path substrings, case-insensitive): anything with `megatron` in its path (needs `GL_ARB_arrays_of_arrays`), the HDR/wide-gamut `scanline-classic` sets (`steamdeck-oled-native`, `uhd-4k-wcg`), koko-aio's `Presets_Handhelds-ng/PSP*`, and Mega Bezel's `crt-super-xbr`. Tracked in [#12](https://github.com/gootecks/3sxtra/issues/12).
+
+The NNEDI3 presets (`chain2`–`chain5`, `ink-fighter-nnedi3`) use the split `predict`/`combine` passes that libretro/slang-shaders introduced in July 2026, with one deferred `jinc2-cshift-rgb` pass at the end. `NNEDI_CSHIFT_PIXELS` is set per preset: 0.5 for 2x, 1.5 for 4x, 3.5 for 8x.
+
+The shader menu builds every selection into a chain. It flattens `#reference` presets (Mega Bezel, koko-aio) before writing `_3sx_chain.slangp`. A chain holds up to 64 passes, 64 textures and 512 parameter overrides. Presets that resolve to no passes, exceed those limits or fail to compile show an error under "Active Chain" instead of failing silently. Mega Bezel presets can take several seconds to compile, and the shader menu applies them once you close it.
+
 ## Driver matrix (`renderer = gpu`)
 
 | Platform | `auto` picks | Also selectable | Shader path |

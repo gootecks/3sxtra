@@ -39,6 +39,7 @@
 #include "port/sdl/app/sdl_app_internal.h"
 #include "port/sdl/app/sdl_app_scale.h"
 #include "port/sdl/app/sdl_app_screenshot.h"
+#include "port/sdl/app/sdl_app_gl_context.h"
 #include "port/sdl/app/sdl_app_shader_config.h"
 #include "port/config/cli_parser.h"
 #include "configuration.h"
@@ -608,31 +609,6 @@ static bool present_only_mode = false; // when true, EndFrame re-blits canvas wi
 // UI mode flag — when true, RmlUi handles overlay menus
 bool use_rmlui = false;
 
-/** @brief Set GL context attributes. Must run after SDL_Init(SDL_INIT_VIDEO). */
-static void set_gl_context_attributes(void) {
-#ifdef __ANDROID__
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-#elif defined(PLATFORM_RPI4)
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-#elif defined(__APPLE__)
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-#else
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-#endif
-#if !defined(PLATFORM_RPI4) && !defined(__ANDROID__)
-    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
-#endif
-}
-
 /** @brief Create the window + SDL_Renderer for the SDL2D backends (also the last-resort fallback). */
 static bool create_sdl2d_window_and_renderer(int width, int height, SDL_WindowFlags flags) {
     if (!SDL_CreateWindowAndRenderer(app_name, width, height, flags, &window, &sdl_renderer)) {
@@ -728,7 +704,7 @@ int SDLApp_Init() {
     }
 
     if (g_renderer_backend == RENDERER_OPENGL) {
-        set_gl_context_attributes();
+        SDLAppGL_SetContextAttributes();
     }
 
 #ifdef __APPLE__
@@ -833,7 +809,7 @@ int SDLApp_Init() {
                 SDL_DestroyWindow(window);
                 window = NULL;
             }
-            set_gl_context_attributes();
+            SDLAppGL_SetContextAttributes();
             window_flags |= SDL_WINDOW_OPENGL;
             window = SDL_CreateWindow(app_name, width, height, window_flags);
             if (!window) {

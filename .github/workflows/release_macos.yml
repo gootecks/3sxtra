@@ -1,6 +1,6 @@
 name: Release (macOS)
 
-# macOS-only release, independent of the other platforms (release.yml).
+# macOS-only release; the other-platform workflows are disabled (.disabled).
 # Every run refreshes the `macos-rolling` pre-release, which the 3SX
 # launcher's updater and FreeFighter install the engine from. Pushing a `macos-v*` tag
 # also publishes a release for that tag (a pre-release when the tag has a

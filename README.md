@@ -28,8 +28,8 @@ Binary: `3sx` (`3sx.exe` on Windows).
 
 | Backend | API | Notes |
 |---|---|---|
-| **OpenGL** (default) | GLSL (4.1 core on macOS) | Texture array batching, PBO async uploads, compute-shader palette conversion, libretro presets |
-| **SDL_GPU** | Metal / Vulkan / D3D12 | Via SDL3's `SDL_GPU` API; SPIR-V shaders translated at runtime by SDL_shadercross |
+| **OpenGL** (default) | GLSL (4.1 core on macOS) | Texture array batching, PBO async uploads, compute-shader palette conversion, libretro presets. On macOS GL 4.1, persistent-mapped buffers and GPU compute palette fall back — see [docs/render-drivers.md](docs/render-drivers.md). |
+| **SDL_GPU** | Metal / Vulkan / D3D12 | Via SDL3's `SDL_GPU` API; SPIR-V shaders translated at runtime by SDL_shadercross. **macOS note**: librashader presets are OpenGL-only (GPU/Metal backend refuses them), and modded stages are unsupported on the GPU backend. |
 | **SDL2D** | SDL3 2D | Simple fallback |
 
 Select with `--renderer gl|gpu|sdl|classic` (or `renderer =` in `config`). Pick the SDL_GPU driver with `--gpu-driver auto|metal|vulkan|d3d12` (config `gpu-driver`). GPU falls back to automatic driver selection, then OpenGL, then SDL2D. See [docs/render-drivers.md](docs/render-drivers.md) for the driver matrix and Vulkan on macOS (MoltenVK / KosmicKrisp).
@@ -39,8 +39,8 @@ Select with `--renderer gl|gpu|sdl|classic` (or `renderer =` in `config`). Pick 
 Press **F3** to access the in-game **Mods Menu** which centralizes various visual and quality-of-life toggles at runtime:
 
 - **Shaders (librashader)**: Load & hot-swap RetroArch `.slangp` presets via the dedicated shader picker (**F2**), or bypass them entirely.
-- **Bezels**: 40+ per-character arcade bezels. Auto-swaps on character change and resets for menus.
-- **HD Stage Backgrounds**: Per-stage multi-layer parallax backgrounds rendered at output resolution using the 22-stage override system.
+- **Bezels**: 40+ per-character arcade bezels. Auto-swaps on character change and resets for menus. *(User-supplied: drop `bezel_<name>_left/right.png` in `assets/bezels/` — repo ships no bezels.)*
+- **HD Stage Backgrounds**: Per-stage multi-layer parallax backgrounds rendered at output resolution using the 22-stage override system. *(User-supplied: drop PNG layers at `assets/stages/stage_XX/` — repo ships no stage assets.)*
 - **Sprite Overrides**: HD sprite replacement support hooked into the rendering pipeline.
 - **Audio Mods**: Toggle custom BGM & voice replacement packs.
 - **Fast Pre-Game**: Skip or speed up the standard arcade intro screens.
@@ -51,7 +51,7 @@ Press **F3** to access the in-game **Mods Menu** which centralizes various visua
 
 | Key | Function |
 |---|---|
-| **F1** | Main menu (input mapping, options, save/load) |
+| **F1** | Control-mapping overlay |
 | **F2** | Shader picker |
 | **F3** | Mods menu (HD backgrounds, visual mods) |
 | **F4** | Cycle shader mode |
@@ -59,14 +59,15 @@ Press **F3** to access the in-game **Mods Menu** which centralizes various visua
 | **F6** | Stage config |
 | **F7** | Training options |
 | **F8** | Cycle scale mode |
-| **F9** | Cycle shader preset |
-| **F10** | Diagnostics (FPS, netplay stats) |
+| **F9** | Dev overlay |
+| **F10** | Palmod menu |
 | **F11** | Toggle fullscreen |
-| **F12** | Input-lag test |
+| **F12** | Texture dump + RmlUi debugger (DEBUG) |
+| **Ctrl+G** | Input-lag test (Pi4 GPIO build only, `ENABLE_GPIO_LAG_TEST`) |
 | **Alt+Enter** | Toggle fullscreen |
 | **` (Grave)** | Screenshot |
-| **9** | Debug pause / frame-step |
-| **0** | Debug overlay (72 options) |
+| **9** | Left-stick input (debug menu nav; DEBUG only) |
+| **0** | Right-stick input (debug overlay toggle; DEBUG only) |
 
 ---
 
@@ -97,8 +98,6 @@ Files go to your user profile, or `config/` in portable mode.
 
 ## Netplay
 
-![Network Lobby](docs/images/network_lobby.gif)
-
 Built on GekkoNet GGPO rollback netcode.
 
 | Feature | Details |
@@ -126,13 +125,11 @@ The in-game **Network** menu serves as your hub for all online features:
 - **Leaderboards**: View the global ranking table utilizing the Glicko-2 rating system. Check player tiers, ranks, grades, and most-played characters.
 - **Online Replays**: Browse, download, and seamlessly play back recent matches played on the server directly within the game.
 
-Start from the in-game **Network** menu or via CLI shorthand: `3sx 1 192.168.1.100`
+Start from the in-game **Network** menu.
 
 ---
 
 ## Performance
-
-![VSync & Turbo Mode](docs/images/vsync_turbo.gif)
 
 All fork-only optimizations:
 
@@ -166,7 +163,7 @@ Create `config/` next to the executable. All saves, replays, and settings stay l
 
 ### Video Broadcasting
 - **Windows** — Spout2
-- **macOS** — Syphon
+- **macOS** — Syphon (optional; disabled by default when framework is not found on the build machine)
 - **Linux** — PipeWire *(WIP)*
 
 ---
@@ -174,7 +171,7 @@ Create `config/` next to the executable. All saves, replays, and settings stay l
 ## CLI Options
 
 ```
-Usage: 3sx [options] [player_side remote_ip]
+Usage: 3sx [options]
 
   --renderer <backend>       gl, gpu, sdl, or classic (default: gl)
   --gpu-driver <driver>      auto, metal, vulkan, or d3d12 (SDL_GPU only; default: auto)
@@ -189,9 +186,10 @@ Usage: 3sx [options] [player_side remote_ip]
   --font-test                Boot into font debug screen
   --help                     Show help
 
-Netplay shorthand:
-  3sx 1 192.168.1.100        Connect as P1
-  3sx 2 192.168.1.100        Connect as P2
+DEBUG-only (`#if DEBUG`):
+  --test-enable              Enable test runner
+  --test-states <path>       Path to states directory
+  --test-inputs <path>       Path to inputs file
 ```
 
 ---
@@ -227,7 +225,7 @@ See [Build Guide](docs/building.md) for full instructions.
 
 **Removed:** FFmpeg — replaced by built-in ADX decoder
 
-SDL3 tracks `main` branch (upstream pins a release tarball).
+SDL3 tracks `main` branch (upstream pins a release tarball). Several other dependencies (SIMDe, cJSON, Spout2, librashader, slang-shaders, SDL_mixer, SDL_image) are likewise cloned from their default branch at build time — see `build-deps.sh` for the full list.
 
 ---
 
